@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "macros.html" import flash_messages, module_select_options %}
+{% block title %}模块层级管理{% endblock %}
+{% block body %}
+<div class="page-wide">
+    <div class="card">
+        <h1>模块层级管理</h1>
+        <div class="nav-bar">
+            <a href="{{ url_for('progress') }}" class="btn btn-secondary btn-sm">返回学分进度</a>
+            <a href="{{ url_for('admin_courses') }}" class="btn btn-secondary btn-sm">课程管理</a>
+        </div>
+        {{ flash_messages() }}
+
+        <div class="panel-muted">
+            <h3>添加顶级模块</h3>
+            <form method="post" class="form-inline">
+                <input type="hidden" name="action" value="add_root">
+                <input type="text" name="name" placeholder="模块名称" required>
+                <input type="number" step="0.5" name="required_credits" placeholder="要求学分" required>
+                <button type="submit" class="btn btn-sm">添加</button>
+            </form>
+        </div>
+
+        <h3>模块树</h3>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>模块名称</th>
+                        <th>要求学分</th>
+                        <th>子模块</th>
+                        <th>课程数</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% macro render_module_row(node, level) %}
+                <tr>
+                    <td class="indent-{{ level if level < 6 else 5 }}">
+                        <strong>{{ node.name }}</strong>
+                        <span class="hint">ID {{ node.id }}</span>
+                    </td>
+                    <td>{{ node.required }}</td>
+                    <td>{{ node.child_count }}</td>
+                    <td>{{ node.course_count }}</td>
+                    <td class="actions-cell">
+                        <div class="actions-stack">
+                            <form method="post" class="form-inline">
+                                <input type="hidden" name="action" value="update">
+                                <input type="hidden" name="module_id" value="{{ node.id }}">
+                                <input type="text" name="name" value="{{ node.name }}" required>
+                                <input type="number" step="0.5" name="required_credits" value="{{ node.required }}" required>
+                                <button type="submit" class="btn btn-sm">保存</button>
+                            </form>
+                            <form method="post" class="form-inline">
+                                <input type="hidden" name="action" value="move">
+                                <input type="hidden" name="module_id" value="{{ node.id }}">
+                                <select name="new_parent_id">
+                                    <option value="">置顶（无父模块）</option>
+                                    {{ module_select_options(node.move_options) }}
+                                </select>
+                                <button type="submit" class="btn btn-secondary btn-sm">移动</button>
+                            </form>
+                            {% if node.can_delete %}
+                            <form method="post" class="form-inline"
+                                  onsubmit="return confirm('确定删除模块「{{ node.name }}」？');">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="module_id" value="{{ node.id }}">
+                                <button type="submit" class="btn btn-danger btn-sm">删除</button>
+                            </form>
+                            {% else %}
+                            <span class="hint">不可删除（有子模块或课程）</span>
+                            {% endif %}
+                            <form method="post" class="form-inline panel-muted" style="padding:10px;">
+                                <input type="hidden" name="action" value="add_child">
+                                <input type="hidden" name="parent_id" value="{{ node.id }}">
+                                <input type="text" name="name" placeholder="子模块名称" required>
+                                <input type="number" step="0.5" name="required_credits" placeholder="学分" required>
+                                <button type="submit" class="btn btn-sm">添加子模块</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% for child in node.children %}
+                    {{ render_module_row(child, level + 1) }}
+                {% endfor %}
+                {% endmacro %}
+
+                {% for root in module_tree %}
+                    {{ render_module_row(root, 0) }}
+                {% else %}
+                <tr><td colspan="5" class="hint">暂无模块，请添加顶级模块或导入培养方案。</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,449 @@
+/* Kurzgesagt 风格太阳系可视化容器 */
+.solar-wrap {
+    position: relative;
+    width: 100%;
+    min-height: 640px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #0a0f2a 0%, #1a1f3a 100%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.solar-iframe {
+    width: 100%;
+    height: 600px;
+    border: none;
+    border-radius: 12px;
+    display: block;
+    background: #000;
+}
+
+#solar-system {
+    width: 100%;
+    height: 580px;
+    display: block;
+    touch-action: none;
+}
+
+#solar-system canvas {
+    display: block;
+}
+
+.solar-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 15, 42, 0.95);
+    z-index: 20;
+    transition: opacity 0.5s ease-out;
+}
+
+.solar-loading.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.solar-loading-bar {
+    width: min(320px, 70%);
+    height: 6px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 20px;
+}
+
+.solar-loading-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #ffcc33, #ffaa00);
+    border-radius: 3px;
+    transition: width 0.3s ease-out;
+}
+
+.solar-loading-text {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
+.solar-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.solar-toolbar h2 {
+    margin: 0;
+    color: var(--text);
+    font-weight: 600;
+}
+
+.solar-hint {
+    font-size: 14px;
+    color: var(--text-secondary);
+    opacity: 0.8;
+}
+
+.solar-back-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 15;
+    display: none;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: var(--font);
+    color: #fff;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 24px;
+    cursor: pointer;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+    transition: all 0.25s ease;
+}
+
+.solar-back-btn.visible {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.solar-back-btn:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.25);
+}
+
+.solar-back-btn:active {
+    transform: translateY(0);
+}
+
+.solar-forum-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: var(--font);
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 24px;
+    cursor: pointer;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    transition: all 0.25s ease;
+}
+
+.solar-forum-btn:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.35);
+    box-shadow: 0 6px 24px rgba(59, 130, 246, 0.3);
+}
+
+.solar-tooltip {
+    position: fixed;
+    z-index: 2000;
+    pointer-events: none;
+    display: none;
+    min-width: 160px;
+    max-width: 280px;
+    padding: 14px 18px;
+    background: rgba(15, 20, 45, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    color: #f5f5f7;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.5;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+.solar-tooltip.visible {
+    display: block;
+    animation: tooltipFadeIn 0.2s ease-out;
+}
+
+@keyframes tooltipFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.solar-tooltip strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #ffcc33;
+}
+
+.solar-tooltip div {
+    color: rgba(255, 255, 255, 0.85);
+    margin-top: 4px;
+}
+
+.solar-timeline {
+    margin-top: 18px;
+    padding: 18px 24px 14px;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.solar-timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.solar-timeline-header span {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.solar-timeline-header .semester-label {
+    color: #ffcc33;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 4px 12px;
+    background: rgba(255, 204, 51, 0.15);
+    border-radius: 20px;
+}
+
+#solar-time-slider {
+    width: 100%;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+}
+
+#solar-time-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ffcc33, #ffaa00);
+    box-shadow: 0 2px 10px rgba(255, 170, 0, 0.5);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+#solar-time-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 16px rgba(255, 170, 0, 0.6);
+}
+
+#solar-time-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ffcc33, #ffaa00);
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(255, 170, 0, 0.5);
+}
+
+.solar-timeline-scale {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.module-label {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    padding: 5px 12px;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    white-space: nowrap;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    word-break: break-word;
+}
+
+.satellite-label {
+    font-size: 11px;
+    padding: 4px 10px;
+    max-width: 120px;
+}
+
+.solar-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 17px;
+    z-index: 10;
+    text-align: center;
+    padding: 24px;
+}
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 15, 42, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.modal-overlay.open {
+    display: flex;
+}
+
+.modal-box {
+    background: rgba(20, 25, 50, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 20px;
+    max-width: 500px;
+    width: 100%;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.modal-body {
+    padding: 20px 24px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+.modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.recommend-row {
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.recommend-row strong {
+    color: #ffcc33;
+    font-size: 14px;
+}
+
+.recommend-row span {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 13px;
+}
+
+.recommend-row .hint {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+}
+
+.view-only-note {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 13px;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: rgba(255, 204, 51, 0.1);
+    border-radius: 10px;
+    border-left: 3px solid #ffcc33;
+}
+
+@media (max-width: 768px) {
+    #solar-system {
+        height: 420px;
+    }
+    .solar-wrap {
+        min-height: 460px;
+    }
+    .solar-timeline {
+        padding: 14px 16px 10px;
+    }
+    .modal-box {
+        max-height: 90vh;
+        margin: 10px;
+    }
+}

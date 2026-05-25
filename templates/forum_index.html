@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "macros.html" import flash_messages %}
+{% block title %}论坛{% endblock %}
+{% block body %}
+<div class="page">
+    <div class="card">
+        <h1>交流论坛</h1>
+        <p class="meta">
+            <a href="{{ url_for('progress') }}">返回学分进度</a>
+            · 选课经验与学分问题讨论
+        </p>
+        {{ flash_messages() }}
+        <div class="nav-bar">
+            <a href="{{ url_for('forum_new_post') }}" class="btn btn-sm">发帖</a>
+        </div>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr><th>标题</th><th>作者</th><th>时间</th><th>回复</th></tr>
+                </thead>
+                <tbody>
+                {% for post in posts %}
+                <tr>
+                    <td><a href="{{ url_for('forum_post', post_id=post.id) }}">{{ post.title }}</a></td>
+                    <td>{{ post.user.username }}</td>
+                    <td>{{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{{ post.comments|length }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="hint">暂无帖子，来发第一条吧。</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if pagination.pages > 1 %}
+        <p class="hint" style="margin-top:16px;">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('forum_index', page=pagination.prev_num) }}">上一页</a>
+            {% endif %}
+            第 {{ pagination.page }} / {{ pagination.pages }} 页
+            {% if pagination.has_next %}
+            <a href="{{ url_for('forum_index', page=pagination.next_num) }}">下一页</a>
+            {% endif %}
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

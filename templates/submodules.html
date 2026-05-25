@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ parent_name }} · 子模块{% endblock %}
+{% block body %}
+<div class="page">
+    <div class="card">
+        <h1>{{ parent_name }}</h1>
+        <p class="subtitle">直接子模块学分完成情况</p>
+        <div class="nav-bar">
+            <a href="{{ url_for('progress') }}" class="btn btn-secondary btn-sm">返回总进度</a>
+        </div>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr><th>子模块</th><th>要求学分</th><th>已修学分</th><th>还需学分</th><th>完成率</th></tr>
+                </thead>
+                <tbody>
+                    {% for sub in submodules %}
+                    <tr>
+                        <td>{{ sub.name }}</td>
+                        <td>{{ sub.required }}</td>
+                        <td>{{ sub.earned }}</td>
+                        <td>{{ sub.remaining }}</td>
+                        <td>
+                            <div class="progress-track">
+                                <div class="progress-fill" style="width: {{ [sub.percent, 100]|min }}%;"></div>
+                            </div>
+                            <div class="progress-label">{{ sub.percent }}%</div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

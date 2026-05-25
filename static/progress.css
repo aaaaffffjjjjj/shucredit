@@ -1,0 +1,339 @@
+/* 进度页：放大布局 + 文字防溢出 + 水桶模块区 */
+.progress-page {
+    max-width: min(1680px, 96vw);
+    margin: 0 auto;
+    padding: 0 8px 48px;
+    font-size: 18px;
+}
+
+.progress-page .card {
+    padding: 28px 24px;
+}
+
+.progress-page h1 {
+    font-size: 36px;
+}
+
+.progress-page h2 {
+    font-size: 26px;
+}
+
+.progress-page h3 {
+    font-size: 20px;
+}
+
+.progress-page .hint,
+.progress-page .meta,
+.progress-page .chart-hint {
+    font-size: 16px;
+}
+
+.text-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+.text-wrap {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+}
+
+.progress-layout {
+    display: grid;
+    grid-template-columns: minmax(380px, 420px) 1fr;
+    gap: 16px;
+    align-items: start;
+}
+
+@media (max-width: 1024px) {
+    .progress-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sidebar-panel {
+    position: sticky;
+    top: 12px;
+}
+
+.sidebar-panel .card {
+    margin-bottom: 14px;
+}
+
+.sidebar-panel .btn,
+.sidebar-panel input,
+.sidebar-panel select {
+    font-size: 16px;
+}
+
+.chart-card {
+    min-height: 720px;
+    padding: 24px 20px;
+}
+
+.chart-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+    align-items: center;
+    font-size: 16px;
+}
+
+.chart-toolbar select {
+    font-size: 16px;
+    padding: 10px 16px;
+}
+
+.status-banner {
+    padding: 14px 18px;
+    font-size: 17px;
+}
+
+.course-list-compact {
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+.course-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 16px;
+}
+
+.course-item > div {
+    min-width: 0;
+    flex: 1;
+}
+
+.course-item strong,
+.course-item .hint {
+    display: block;
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+.unknown-item input,
+.unknown-item select {
+    width: 100%;
+    font-size: 16px;
+}
+
+/* 模块水桶网格 */
+.tanks-section {
+    margin-top: 20px;
+}
+
+.tanks-section h3 {
+    margin-bottom: 12px;
+}
+
+.tanks-toolbar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.tanks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    gap: 16px;
+    max-height: 420px;
+    overflow-y: auto;
+    padding: 8px 4px;
+}
+
+.tank-cell {
+    min-width: 0;
+}
+
+.water-tank-widget {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: default;
+    transition: transform 0.2s;
+}
+
+.water-tank-widget:hover {
+    transform: translateY(-2px);
+}
+
+.water-tank-canvas {
+    display: block;
+    border-radius: 12px;
+}
+
+.water-tank-cap {
+    width: 70%;
+    height: 6px;
+    margin-top: -2px;
+    background: linear-gradient(180deg, #c8c8cc, #e8e8ed);
+    border-radius: 3px 3px 0 0;
+}
+
+.water-tank-info {
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    margin-top: 8px;
+    width: 100%;
+    padding: 0 4px;
+    color: var(--text);
+}
+
+.water-tank-pct {
+    font-size: 14px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+.water-tank-widget[data-status="complete"] .water-tank-pct {
+    color: var(--success);
+}
+
+.water-tank-widget[data-status="partial"] .water-tank-pct {
+    color: var(--warning);
+}
+
+.water-tank-widget[data-status="none"] .water-tank-pct {
+    color: var(--danger);
+}
+
+/* 弹窗 */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(6px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.modal-overlay.open {
+    display: flex;
+}
+
+.modal-box {
+    background: rgba(255, 255, 255, 0.98);
+    border-radius: var(--radius);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    max-width: 720px;
+    width: 100%;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    padding: 22px 26px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+    font-size: 22px;
+    margin: 0;
+    word-break: break-word;
+}
+
+.modal-body {
+    padding: 18px 26px;
+    overflow-y: auto;
+    flex: 1;
+    font-size: 17px;
+}
+
+.modal-footer {
+    padding: 14px 26px 22px;
+}
+
+.view-only-note {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+}
+
+.recommend-row {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+.recommend-row:last-child {
+    border-bottom: none;
+}
+
+.recommend-row strong {
+    font-size: 17px;
+}
+
+.toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(29, 29, 31, 0.92);
+    color: #fff;
+    padding: 14px 28px;
+    border-radius: 980px;
+    font-size: 16px;
+    z-index: 2000;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    max-width: 90vw;
+    word-break: break-word;
+}
+
+.toast.show {
+    opacity: 1;
+}
+
+.collapsible-header {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    font-size: 20px;
+}
+
+.collapsible-header::after {
+    content: '▼';
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.collapsible-header.collapsed::after {
+    transform: rotate(-90deg);
+}
+
+.collapsible-body.collapsed {
+    display: none;
+}
+
+/* ECharts 容器 tooltip 内迷你水桶 */
+.tooltip-tank-wrap {
+    width: 64px;
+    height: 80px;
+    margin: 8px auto;
+}

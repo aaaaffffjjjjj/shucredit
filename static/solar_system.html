@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学分太阳系</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(180deg, #080c20 0%, #151a38 100%);
+}
+#universe {
+    position: relative;
+    width: 100%;
+    height: calc(100% - 80px);
+    perspective: 1200px;
+    transform-style: preserve-3d;
+}
+#solar-system {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform-style: preserve-3d;
+    transform: translate(-50%, -50%);
+    transition: transform 0.8s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.sun {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 60px;
+    height: 60px;
+    margin: -30px 0 0 -30px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #fff7b0, #ffcc33, #ffaa00);
+    box-shadow: 0 0 60px #ffaa44, 0 0 120px rgba(255, 170, 68, 0.5);
+    transform-style: preserve-3d;
+    z-index: 100;
+}
+.sun::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 140px;
+    height: 140px;
+    margin: -70px 0 0 -70px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 200, 100, 0.3), transparent 70%);
+    animation: sunPulse 3s ease-in-out infinite;
+}
+@keyframes sunPulse {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.15); opacity: 1; }
+}
+.sun-label {
+    position: absolute;
+    top: calc(50% + 45px);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    background: rgba(0,0,0,0.6);
+    padding: 6px 14px;
+    border-radius: 20px;
+    z-index: 101;
+}
+.orbit {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border: 1px dashed rgba(255,255,255,0.2);
+    border-radius: 50%;
+    transform-style: preserve-3d;
+}
+.planet-orbit {
+    transform-style: preserve-3d;
+}
+.pos {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform-style: preserve-3d;
+}
+.planet {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.planet:hover {
+    transform: translate(-50%, -50%) scale(1.25);
+    z-index: 50;
+}
+.planet-atmosphere {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+.planet-surface {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border-radius: 50%;
+    overflow: hidden;
+    transform: translate(-50%, -50%);
+}
+.planet-stripe {
+    position: absolute;
+    left: 0;
+    right: 0;
+    background: rgba(255,255,255,0.25);
+}
+.planet-spot {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+}
+.planet-ring-texture {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.2);
+    transform: translate(-50%, -50%);
+}
+.progress-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    pointer-events: none;
+}
+.planet-label {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 8px;
+    white-space: nowrap;
+    color: #fff;
+    font-size: 11px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    background: rgba(0,0,0,0.55);
+    padding: 4px 10px;
+    border-radius: 12px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+.planet:hover .planet-label,
+.planet.focused .planet-label {
+    opacity: 1;
+}
+.satellite-orbit {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 50%;
+    transform-style: preserve-3d;
+}
+.satellite {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    cursor: pointer;
+    transform: translate(-50%, -50%);
+    transition: transform 0.2s ease;
+}
+.satellite:hover {
+    transform: translate(-50%, -50%) scale(1.3);
+    z-index: 60;
+}
+.satellite-body {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+}
+.satellite-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border-radius: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+}
+.satellite-label {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 4px;
+    white-space: nowrap;
+    color: rgba(255,255,255,0.8);
+    font-size: 9px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+.satellite:hover .satellite-label {
+    opacity: 1;
+}
+.connection-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 5;
+}
+.dimmed .planet {
+    opacity: 0.2;
+    filter: grayscale(0.5);
+}
+.dimmed .orbit {
+    opacity: 0.15;
+}
+#controls-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 70px;
+    background: rgba(10, 15, 40, 0.9);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 0 24px;
+    z-index: 200;
+}
+.ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.ctrl-label {
+    color: rgba(255,255,255,0.7);
+    font-size: 13px;
+}
+.module-btn {
+    padding: 8px 16px;
+    font-size: 12px;
+    font-family: inherit;
+    color: #fff;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+.module-btn:hover {
+    background: rgba(255,255,255,0.18);
+    transform: translateY(-1px);
+}
+.module-btn.active {
+    background: rgba(59, 130, 246, 0.5);
+    border-color: rgba(59, 130, 246, 0.7);
+}
+.time-slider {
+    width: 200px;
+    height: 6px;
+    appearance: none;
+    background: rgba(255,255,255,0.15);
+    border-radius: 3px;
+    outline: none;
+}
+.time-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.5);
+}
+.time-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+    cursor: pointer;
+    border: none;
+}
+#semester-display {
+    color: #fff;
+    font-size: 13px;
+    min-width: 70px;
+    text-align: center;
+}
+.back-btn {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    padding: 10px 18px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #fff;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 24px;
+    cursor: pointer;
+    backdrop-filter: blur(12px);
+    z-index: 300;
+    display: none;
+    transition: all 0.25s ease;
+}
+.back-btn:hover {
+    background: rgba(255,255,255,0.2);
+    transform: translateY(-2px);
+}
+.back-btn.visible {
+    display: block;
+}
+#tooltip {
+    position: fixed;
+    pointer-events: none;
+    z-index: 500;
+    min-width: 150px;
+    max-width: 260px;
+    padding: 12px 16px;
+    background: rgba(15, 20, 45, 0.95);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    color: #f5f5f7;
+    font-size: 13px;
+    line-height: 1.5;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    backdrop-filter: blur(12px);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+#tooltip.visible {
+    opacity: 1;
+}
+#tooltip strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 14px;
+    color: #fff;
+}
+#tooltip div {
+    color: rgba(255,255,255,0.75);
+}
+#recommend-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 15, 42, 0.85);
+    backdrop-filter: blur(8px);
+    z-index: 400;
+    padding: 20px;
+}
+#recommend-modal.visible {
+    display: flex;
+}
+.modal-content {
+    background: rgba(20, 25, 55, 0.98);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 16px;
+    max-width: 520px;
+    width: 100%;
+    max-height: 70vh;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.modal-header {
+    padding: 18px 22px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.modal-header h3 {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+}
+.modal-body {
+    padding: 18px 22px;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+.course-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    color: rgba(255,255,255,0.85);
+    font-size: 13px;
+}
+.course-item:last-child { margin-bottom: 0; }
+.course-name { font-weight: 500; }
+.course-credits { color: rgba(255,255,255,0.5); font-size: 12px; }
+.modal-footer {
+    padding: 14px 22px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    text-align: right;
+}
+.close-btn {
+    padding: 8px 20px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #fff;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.close-btn:hover {
+    background: rgba(255,255,255,0.18);
+}
+.star-field {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+}
+.star {
+    position: absolute;
+    background: #fff;
+    border-radius: 50%;
+}
+.meteor {
+    position: fixed;
+    width: 2px;
+    height: 2px;
+    background: linear-gradient(45deg, #fff, transparent);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1;
+    animation: meteorFly 1s linear forwards;
+}
+@keyframes meteorFly {
+    0% { opacity: 1; transform: translate(0, 0); }
+    100% { opacity: 0; transform: translate(-300px, 200px); }
+}
+.nebula {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(60px);
+    pointer-events: none;
+    z-index: 0;
+}
+#loading-screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, #080c20 0%, #151a38 100%);
+    z-index: 999;
+    transition: opacity 0.5s ease;
+}
+#loading-screen.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+.loading-text {
+    color: rgba(255,255,255,0.9);
+    font-size: 16px;
+    margin-bottom: 20px;
+}
+.loading-bar {
+    width: 200px;
+    height: 4px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.loading-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+</style>
+</head>
+<body>
+
+<div id="loading-screen">
+    <div class="loading-text">正在加载学分太阳系…</div>
+    <div class="loading-bar"><div class="loading-fill" id="loading-fill"></div></div>
+</div>
+
+<div class="star-field" id="star-field"></div>
+<div class="nebula" style="width:400px;height:400px;top:10%;left:5%;background:rgba(140,80,220,0.06);"></div>
+<div class="nebula" style="width:350px;height:350px;top:60%;right:10%;background:rgba(60,140,220,0.05);"></div>
+<div class="nebula" style="width:300px;height:300px;bottom:20%;left:40%;background:rgba(220,100,160,0.04);"></div>
+
+<div id="universe">
+    <div id="solar-system"></div>
+</div>
+
+<button type="button" class="back-btn" id="back-btn">← 返回全景</button>
+
+<div id="controls-bar">
+    <div class="ctrl-group">
+        <span class="ctrl-label">模块视图：</span>
+        <div id="module-buttons"></div>
+    </div>
+    <div class="ctrl-group">
+        <span class="ctrl-label">学期：</span>
+        <input type="range" class="time-slider" id="time-slider" min="0" max="100" value="100">
+        <span id="semester-display">第8学期</span>
+    </div>
+</div>
+
+<div id="tooltip"></div>
+
+<div id="recommend-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modal-title">未修课程</h3>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-footer">
+            <button type="button" class="close-btn" id="close-modal">关闭</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const SEMESTER_LABELS = ['第1学期', '第2学期', '第3学期', '第4学期', '第5学期', '第6学期', '第7学期', '第8学期'];
+    const PLANET_COLORS = ['#3b82f6', '#f97316', '#8b5cf6', '#ec4899', '#10b981', '#06b6d4', '#f59e0b', '#ef4444'];
+    const TEXTURE_TYPES = ['stripe', 'spot', 'ring'];
+    const PLANET_SIZE_MIN = 18, PLANET_SIZE_MAX = 45;
+    const ORBIT_BASE_RADIUS = 100, ORBIT_SPACING = 70;
+    const SATELLITE_ORBIT_RADIUS = 45;
+
+    let solarSystem, universe;
+    let modules = [], sunData = { required: 160, earned: 0 };
+    let timePercent = 100, focusedPlanetId = null, selectedModuleIndex = 0;
+    let hoveredTarget = null;
+    let cameraAngleX = 0, cameraAngleY = 0, cameraZoom = 1;
+    let isDragging = false, lastMouseX = 0, lastMouseY = 0;
+    let isIframe = window !== window.parent;
+
+    function $(id) { return document.getElementById(id); }
+    function hexToRgb(hex) {
+        return { r: parseInt(hex.slice(1,3),16), g: parseInt(hex.slice(3,5),16), b: parseInt(hex.slice(5,7),16) };
+    }
+    function rgbToHex(r, g, b) {
+        return '#' + [r,g,b].map(v => Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');
+    }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function adjustBrightness(hex, f) { const c = hexToRgb(hex); return rgbToHex(c.r*f, c.g*f, c.b*f); }
+    function saturateColor(hex, s) {
+        const c = hexToRgb(hex), gray = 0.2126*c.r + 0.7152*c.g + 0.0722*c.b;
+        return rgbToHex(gray + s*(c.r-gray), gray + s*(c.g-gray), gray + s*(c.b-gray));
+    }
+
+    function scaledModule(mod, scale01) {
+        const earned = (mod.earned || 0) * scale01, required = mod.required || 0;
+        const percent = required > 0 ? Math.min(100, Math.round((earned / required) * 1000) / 10) : 0;
+        return { earned: Math.round(earned * 100) / 100, percent, remaining: Math.max(0, required - earned) };
+    }
+
+    function getTextureType(i) { return TEXTURE_TYPES[i % TEXTURE_TYPES.length]; }
+
+    function generateTexture(type, radius) {
+        const data = { type };
+        if (type === 'stripe') {
+            data.stripes = [];
+            const count = 3 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < count; i++) {
+                data.stripes.push({ y: -radius * 0.5 + (i / (count - 1)) * radius, w: 2 + Math.random() * 2, op: 0.2 + Math.random() * 0.2 });
+            }
+        } else if (type === 'spot') {
+            data.spots = [];
+            const count = 8 + Math.floor(Math.random() * 8);
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2, dist = Math.random() * radius * 0.65;
+                data.spots.push({ x: Math.cos(angle) * dist, y: Math.sin(angle) * dist, size: 1.5 + Math.random() * 2.5, op: 0.15 + Math.random() * 0.2 });
+            }
+        } else if (type === 'ring') {
+            data.rings = [];
+            const count = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < count; i++) {
+                data.rings.push({ r: radius * (0.35 + i * 0.3), op: 0.12 + Math.random() * 0.12 });
+            }
+        }
+        return data;
+    }
+
+    function buildStars() {
+        const field = $('star-field');
+        for (let i = 0; i < 200; i++) {
+            const star = document.createElement('div');
+            star.className = 'star';
+            const size = 0.5 + Math.random() * 1.5;
+            star.style.cssText = `width:${size}px;height:${size}px;left:${Math.random()*100}%;top:${Math.random()*100}%;opacity:${0.3+Math.random()*0.5};`;
+            star.style.animation = Math.random() > 0.7 ? `starTwinkle ${2+Math.random()*3}s ease-in-out infinite` : 'none';
+            field.appendChild(star);
+        }
+        const style = document.createElement('style');
+        style.textContent = `@keyframes starTwinkle { 0%,100%{opacity:0.3} 50%{opacity:0.9} }`;
+        document.head.appendChild(style);
+    }
+
+    function spawnMeteor() {
+        const meteor = document.createElement('div');
+        meteor.className = 'meteor';
+        meteor.style.left = (70 + Math.random() * 30) + '%';
+        meteor.style.top = (Math.random() * 40) + '%';
+        document.body.appendChild(meteor);
+        setTimeout(() => meteor.remove(), 1000);
+    }
+
+    function buildControls() {
+        const btnContainer = $('module-buttons');
+        btnContainer.innerHTML = '';
+        const allBtn = document.createElement('button');
+        allBtn.className = 'module-btn active';
+        allBtn.textContent = '全部';
+        allBtn.onclick = () => selectModule(0);
+        btnContainer.appendChild(allBtn);
+        modules.forEach((m, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'module-btn';
+            btn.textContent = m.name.length > 6 ? m.name.slice(0,6) + '…' : m.name;
+            btn.onclick = () => selectModule(i + 1);
+            btnContainer.appendChild(btn);
+        });
+        $('time-slider').addEventListener('input', (e) => {
+            timePercent = parseInt(e.target.value, 10);
+            updateSemesterLabel();
+            updateAllPlanetsVisual();
+        });
+        $('back-btn').addEventListener('click', resetView);
+        $('close-modal').addEventListener('click', () => $('recommend-modal').classList.remove('visible'));
+    }
+
+    function selectModule(index) {
+        selectedModuleIndex = index;
+        document.querySelectorAll('.module-btn').forEach((btn, i) => {
+            btn.classList.toggle('active', i === index);
+        });
+        if (index === 0) {
+            resetView();
+        } else {
+            const mod = modules[index - 1];
+            focusOnPlanet(mod.id);
+        }
+    }
+
+    function updateSemesterLabel() {
+        const idx = Math.round((timePercent / 100) * 7);
+        $('semester-display').textContent = SEMESTER_LABELS[Math.min(7, idx)];
+    }
+
+    function createSun() {
+        const sunEl = document.createElement('div');
+        sunEl.className = 'sun';
+        sunEl.id = 'sun';
+        const label = document.createElement('div');
+        label.className = 'sun-label';
+        label.id = 'sun-label';
+        label.textContent = `🎓 总要求 ${sunData.required} 学分`;
+        solarSystem.appendChild(sunEl);
+        solarSystem.appendChild(label);
+    }
+
+    function createOrbits() {
+        modules.forEach((mod, i) => {
+            const radius = ORBIT_BASE_RADIUS + i * ORBIT_SPACING;
+            const orbit = document.createElement('div');
+            orbit.className = 'orbit';
+            orbit.id = `orbit-${mod.id}`;
+            orbit.style.cssText = `width:${radius*2}px;height:${radius*2}px;margin-left:${-radius}px;margin-top:${-radius}px;`;
+            solarSystem.appendChild(orbit);
+        });
+    }
+
+    function createPlanetElement(mod, i) {
+        const orbitRadius = ORBIT_BASE_RADIUS + i * ORBIT_SPACING;
+        const required = mod.required || 10;
+        const planetRadius = clamp(PLANET_SIZE_MIN, PLANET_SIZE_MAX, PLANET_SIZE_MIN + Math.pow(required, 0.4) * 4);
+        const baseColor = PLANET_COLORS[i % PLANET_COLORS.length];
+        const textureType = getTextureType(i);
+        const texture = generateTexture(textureType, planetRadius);
+        const angle = (i / modules.length) * Math.PI * 2;
+        const speed = 0.15 / Math.sqrt(orbitRadius / ORBIT_BASE_RADIUS);
+
+        const orbitEl = document.createElement('div');
+        orbitEl.className = 'planet-orbit';
+        orbitEl.id = `planet-orbit-${mod.id}`;
+        orbitEl.style.cssText = `position:absolute;top:50%;left:50%;width:${orbitRadius*2}px;height:${orbitRadius*2}px;margin-left:${-orbitRadius}px;margin-top:${-orbitRadius}px;`;
+
+        const posEl = document.createElement('div');
+        posEl.className = 'pos';
+        posEl.style.cssText = `transform:rotate(${angle}rad)`;
+
+        const planetEl = document.createElement('div');
+        planetEl.className = 'planet';
+        planetEl.id = `planet-${mod.id}`;
+        planetEl.dataset.modId = mod.id;
+        planetEl.dataset.index = i;
+        planetEl.style.cssText = `width:${planetRadius*2}px;height:${planetRadius*2}px;`;
+
+        const atmEl = document.createElement('div');
+        atmEl.className = 'planet-atmosphere';
+        atmEl.style.cssText = `width:${planetRadius*3}px;height:${planetRadius*3}px;background:radial-gradient(circle, transparent 40%, ${baseColor}33 100%);`;
+
+        const surfaceEl = document.createElement('div');
+        surfaceEl.className = 'planet-surface';
+        surfaceEl.style.cssText = `width:${planetRadius*2}px;height:${planetRadius*2}px;`;
+
+        if (textureType === 'stripe' && texture.stripes) {
+            texture.stripes.forEach(s => {
+                const stripe = document.createElement('div');
+                stripe.className = 'planet-stripe';
+                stripe.style.cssText = `height:${s.w}px;top:${planetRadius + s.y}px;opacity:${s.op};`;
+                surfaceEl.appendChild(stripe);
+            });
+        } else if (textureType === 'spot' && texture.spots) {
+            texture.spots.forEach(s => {
+                const spot = document.createElement('div');
+                spot.className = 'planet-spot';
+                spot.style.cssText = `width:${s.size}px;height:${s.size}px;left:${planetRadius+s.x}px;top:${planetRadius+s.y}px;opacity:${s.op};`;
+                surfaceEl.appendChild(spot);
+            });
+        } else if (textureType === 'ring' && texture.rings) {
+            texture.rings.forEach(r => {
+                const ring = document.createElement('div');
+                ring.className = 'planet-ring-texture';
+                ring.style.cssText = `width:${r.r*2}px;height:${r.r*2}px;border-width:1.5px;opacity:${r.op};`;
+                surfaceEl.appendChild(ring);
+            });
+        }
+
+        const progressRing = document.createElement('svg');
+        progressRing.className = 'progress-ring';
+        progressRing.setAttribute('width', planetRadius * 2 + 12);
+        progressRing.setAttribute('height', planetRadius * 2 + 12);
+        progressRing.style.cssText = `width:${planetRadius*2+12}px;height:${planetRadius*2+12}px;`;
+        const circumference = 2 * Math.PI * (planetRadius + 4);
+        progressRing.innerHTML = `<circle cx="${planetRadius+6}" cy="${planetRadius+6}" r="${planetRadius+4}" fill="none" stroke="rgba(255,215,80,0.8)" stroke-width="3" stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}" transform="rotate(-90 ${planetRadius+6} ${planetRadius+6})"/>`;
+
+        const label = document.createElement('div');
+        label.className = 'planet-label';
+        label.id = `label-${mod.id}`;
+
+        planetEl.appendChild(atmEl);
+        planetEl.appendChild(surfaceEl);
+        planetEl.appendChild(progressRing);
+        planetEl.appendChild(label);
+        posEl.appendChild(planetEl);
+        orbitEl.appendChild(posEl);
+        solarSystem.appendChild(orbitEl);
+
+        planetEl.addEventListener('mouseenter', (e) => handlePlanetHover(mod, planetEl, e));
+        planetEl.addEventListener('mouseleave', () => handlePlanetLeave(planetEl));
+        planetEl.addEventListener('click', () => handlePlanetClick(mod));
+
+        return { orbitEl, posEl, planetEl, progressRing, circumference, angle, speed, radius: planetRadius, baseColor };
+    }
+
+    let planetData = [];
+    let satData = [];
+
+    function createSatellites(parentMod, parentEl, parentRadius) {
+        if (!parentMod.children || parentMod.children.length === 0) return;
+        const satOrbitRadius = parentRadius + SATELLITE_ORBIT_RADIUS;
+        const satOrbit = document.createElement('div');
+        satOrbit.className = 'satellite-orbit';
+        satOrbit.id = `sat-orbit-${parentMod.id}`;
+        satOrbit.style.cssText = `width:${satOrbitRadius*2}px;height:${satOrbitRadius*2}px;margin-left:${-satOrbitRadius}px;margin-top:${-satOrbitRadius}px;`;
+
+        const satGroup = document.createElement('div');
+        satGroup.style.cssText = 'position:absolute;top:50%;left:50%;';
+
+        parentMod.children.forEach((child, i) => {
+            const angle = (i / parentMod.children.length) * Math.PI * 2;
+            const childReq = child.required || 10;
+            const satRadius = clamp(6, 14, 6 + Math.pow(childReq, 0.4) * 2);
+            const satEl = document.createElement('div');
+            satEl.className = 'satellite';
+            satEl.id = `sat-${child.id}`;
+            satEl.dataset.modId = child.id;
+            satEl.style.cssText = `width:${satRadius*2+8}px;height:${satRadius*2+8}px;transform:translate(-50%,-50%) rotate(${angle}rad);`;
+
+            const satBody = document.createElement('div');
+            satBody.className = 'satellite-body';
+            satBody.style.cssText = `width:${satRadius*2}px;height:${satRadius*2}px;background:linear-gradient(135deg,#60a5fa,#3b82f6);box-shadow:0 2px 8px rgba(59,130,246,0.4);`;
+
+            const satRing = document.createElement('svg');
+            satRing.className = 'satellite-ring';
+            satRing.setAttribute('width', satRadius * 2 + 8);
+            satRing.setAttribute('height', satRadius * 2 + 8);
+            satRing.style.cssText = `width:${satRadius*2+8}px;height:${satRadius*2+8}px;`;
+            const satCirc = 2 * Math.PI * (satRadius + 3);
+            satRing.innerHTML = `<circle cx="${satRadius+4}" cy="${satRadius+4}" r="${satRadius+3}" fill="none" stroke="rgba(255,215,80,0.8)" stroke-width="2" stroke-dasharray="${satCirc}" stroke-dashoffset="${satCirc}" transform="rotate(-90 ${satRadius+4} ${satRadius+4})"/>`;
+
+            const satLabel = document.createElement('div');
+            satLabel.className = 'satellite-label';
+            satLabel.textContent = child.name.length > 5 ? child.name.slice(0,5) + '…' : child.name;
+
+            satEl.appendChild(satBody);
+            satEl.appendChild(satRing);
+            satEl.appendChild(satLabel);
+            satGroup.appendChild(satEl);
+
+            satEl.addEventListener('mouseenter', (e) => handleSatHover(child, satEl, e));
+            satEl.addEventListener('mouseleave', () => handleSatLeave(satEl));
+            satEl.addEventListener('click', (e) => { e.stopPropagation(); handleSatClick(child); });
+
+            satData.push({ el: satEl, ring: satRing, circ: satCirc, angle, speed: 0.3, radius: satRadius });
+        });
+
+        satOrbit.appendChild(satGroup);
+        parentEl.appendChild(satOrbit);
+        satData.push({ orbit: satOrbit, group: satGroup, parentId: parentMod.id });
+    }
+
+    function handlePlanetHover(mod, el, e) {
+        const s = scaledModule(mod, timePercent / 100);
+        showTooltip(`<strong>${mod.name}</strong><div>已修: ${s.earned} / ${mod.required} 学分</div><div>完成度: ${s.percent}%</div>`, e.clientX, e.clientY);
+    }
+    function handlePlanetLeave(el) {
+        hideTooltip();
+    }
+    function handlePlanetClick(mod) {
+        if (focusedPlanetId === mod.id) {
+            resetView();
+        } else {
+            focusOnPlanet(mod.id);
+        }
+    }
+    function handleSatHover(mod, el, e) {
+        const s = scaledModule(mod, timePercent / 100);
+        showTooltip(`<strong>${mod.name}</strong><div>已修: ${s.earned} / ${mod.required} 学分</div><div>完成度: ${s.percent}%</div>`, e.clientX, e.clientY);
+    }
+    function handleSatLeave(el) {
+        hideTooltip();
+    }
+    function handleSatClick(mod) {
+        fetch(`/api/recommend_courses/${mod.id}`)
+            .then(r => r.json())
+            .then(courses => {
+                const body = $('modal-body');
+                if (!courses || courses.length === 0) {
+                    body.innerHTML = '<div style="color:rgba(255,255,255,0.5);text-align:center;">暂无未修课程</div>';
+                } else {
+                    body.innerHTML = courses.map(c => `<div class="course-item"><span class="course-name">${c.name}</span><span class="course-credits">${c.credits} 学分</span></div>`).join('');
+                }
+                $('modal-title').textContent = `${mod.name} - 未修课程（仅供查看）`;
+                $('recommend-modal').classList.add('visible');
+            })
+            .catch(() => {
+                $('modal-body').innerHTML = '<div style="color:rgba(255,100,100,0.8);text-align:center;">加载失败</div>';
+                $('recommend-modal').classList.add('visible');
+            });
+    }
+
+    function showTooltip(html, x, y) {
+        const tip = $('tooltip');
+        tip.innerHTML = html;
+        tip.style.left = (x + 18) + 'px';
+        tip.style.top = (y - 15) + 'px';
+        tip.classList.add('visible');
+    }
+    function hideTooltip() {
+        $('tooltip').classList.remove('visible');
+    }
+
+    function focusOnPlanet(modId) {
+        focusedPlanetId = modId;
+        $('back-btn').classList.add('visible');
+        const idx = planetData.findIndex(p => p.el.id === `planet-${modId}`);
+        if (idx >= 0) {
+            const angle = (idx / modules.length) * Math.PI * 2;
+            const targetAngleX = -15 * (Math.PI / 180);
+            const targetAngleY = angle - Math.PI / 2;
+            animateCamera(targetAngleX, targetAngleY, 0.8);
+        }
+        planetData.forEach(p => {
+            const isFocused = p.el.id === `planet-${modId}`;
+            p.el.classList.toggle('focused', isFocused);
+            $(`planet-orbit-${p.el.dataset.modId}`).style.opacity = isFocused ? 1 : 0.15;
+        });
+    }
+
+    function resetView() {
+        focusedPlanetId = null;
+        $('back-btn').classList.remove('visible');
+        animateCamera(0, 0, 1);
+        planetData.forEach(p => {
+            p.el.classList.remove('focused');
+            $(`planet-orbit-${p.el.dataset.modId}`).style.opacity = 1;
+        });
+    }
+
+    function animateCamera(targetX, targetY, targetZoom) {
+        const startX = cameraAngleX, startY = cameraAngleY, startZ = cameraZoom;
+        const duration = 800, start = performance.now();
+        function step(now) {
+            const t = clamp((now - start) / duration, 0, 1);
+            const ease = t < 0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
+            cameraAngleX = lerp(startX, targetX, ease);
+            cameraAngleY = lerp(startY, targetY, ease);
+            cameraZoom = lerp(startZ, targetZoom, ease);
+            updateCamera();
+            if (t < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
+    function updateCamera() {
+        solarSystem.style.transform = `translate(-50%,-50%) rotateX(${cameraAngleX}rad) rotateY(${cameraAngleY}rad) scale(${cameraZoom})`;
+    }
+
+    function updateAllPlanetsVisual() {
+        planetData.forEach(p => {
+            const mod = modules[parseInt(p.planetEl.dataset.index)];
+            if (!mod) return;
+            const s = scaledModule(mod, timePercent / 100);
+            const offset = p.circumference * (1 - s.percent / 100);
+            p.progressRing.querySelector('circle').style.strokeDashoffset = offset;
+            const brightness = 0.4 + (s.percent / 100) * 0.6;
+            const color = adjustBrightness(p.baseColor, brightness);
+            p.planetEl.querySelector('.planet-surface').style.background = color;
+            const labelEl = document.getElementById(`label-${mod.id}`);
+            if (labelEl) labelEl.textContent = `${mod.name} ${s.percent}%`;
+        });
+        satData.forEach(sat => {
+            if (!sat.orbit && sat.ring) {
+                const mod = modules.find(m => m.children && m.children.some(c => c.id === parseInt(sat.el.dataset.modId)));
+                if (!mod) return;
+                const child = mod.children.find(c => c.id === parseInt(sat.el.dataset.modId));
+                if (!child) return;
+                const s = scaledModule(child, timePercent / 100);
+                const offset = sat.circ * (1 - s.percent / 100);
+                sat.ring.querySelector('circle').style.strokeDashoffset = offset;
+            }
+        });
+    }
+
+    let lastTime = 0;
+    function animate(time) {
+        const dt = lastTime ? (time - lastTime) / 1000 : 0.016;
+        lastTime = time;
+
+        planetData.forEach(p => {
+            p.angle += p.speed * dt;
+            p.posEl.style.transform = `rotate(${p.angle}rad)`;
+        });
+        satData.forEach(sat => {
+            if (!sat.orbit) {
+                sat.angle += sat.speed * dt;
+                sat.el.style.transform = `translate(-50%,-50%) rotate(${sat.angle}rad)`;
+            }
+        });
+
+        if (Math.random() < 0.0003) spawnMeteor();
+        requestAnimationFrame(animate);
+    }
+
+    function initData(data) {
+        modules = [];
+        if (data.modules) {
+            const map = {};
+            data.modules.forEach(m => { map[m.id] = { ...m, children: [] }; });
+            data.modules.forEach(m => {
+                if (m.parent_id == null) modules.push(map[m.id]);
+                else if (map[m.parent_id]) map[m.parent_id].children.push(map[m.id]);
+            });
+            modules.sort((a, b) => a.name.localeCompare(b.name));
+        }
+        sunData.required = data.sun?.required || 160;
+        sunData.earned = data.sun?.earned || 0;
+
+        $('sun-label').textContent = `🎓 总要求 ${sunData.required} 学分`;
+        createOrbits();
+        modules.forEach((mod, i) => {
+            const pData = createPlanetElement(mod, i);
+            planetData.push(pData);
+            createSatellites(mod, pData.planetEl, pData.radius);
+        });
+        updateAllPlanetsVisual();
+        buildControls();
+        $('loading-fill').style.width = '100%';
+        setTimeout(() => $('loading-screen').classList.add('hidden'), 300);
+    }
+
+    function init() {
+        solarSystem = $('solar-system');
+        universe = $('universe');
+        buildStars();
+        createSun();
+
+        universe.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.planet') || e.target.closest('.satellite') || e.target.closest('button')) return;
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            universe.style.cursor = 'grabbing';
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - lastMouseX;
+            const dy = e.clientY - lastMouseY;
+            cameraAngleY += dx * 0.005;
+            cameraAngleX = clamp(cameraAngleX + dy * 0.005, -0.5, 0.5);
+            updateCamera();
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            universe.style.cursor = 'default';
+        });
+
+        universe.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            cameraZoom = clamp(cameraZoom * (e.deltaY > 0 ? 0.95 : 1.05), 0.5, 2);
+            updateCamera();
+        });
+
+        let dataReceived = false;
+
+        window.addEventListener('message', (e) => {
+            if (e.data && e.data.type === 'creditData') {
+                dataReceived = true;
+                initData(e.data.data);
+            }
+            if (e.data && e.data.type === 'timeScale') {
+                timePercent = e.data.scale;
+                updateSemesterLabel();
+                updateAllPlanetsVisual();
+            }
+        });
+
+        fetch('/api/progress_data')
+            .then(r => r.json())
+            .then(data => {
+                if (!dataReceived) {
+                    initData(data);
+                }
+            })
+            .catch(() => {
+                if (!dataReceived) {
+                    $('loading-fill').style.width = '100%';
+                    $('loading-screen').querySelector('.loading-text').textContent = '加载失败，请刷新重试';
+                }
+            });
+
+        animate(0);
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+</body>
+</html>
