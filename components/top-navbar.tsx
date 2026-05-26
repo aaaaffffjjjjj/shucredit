@@ -28,7 +28,7 @@ export default function TopNavbar({
 
   return (
     <nav
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 max-w-[min(94vw,980px)] px-3 py-2 bg-black/40 backdrop-blur-lg rounded-full border border-white/10 shadow-lg"
+      className="fixed top-14 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 max-w-[min(80vw,800px)] px-3 py-2 bg-black/40 backdrop-blur-lg rounded-full border border-white/10 shadow-lg"
       aria-label="模块导航"
     >
       <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">

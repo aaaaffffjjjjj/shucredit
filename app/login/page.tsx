@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, ArrowRight } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight, ChevronDown, GraduationCap } from 'lucide-react'
 import Link from 'next/link'
 import { MathBackground } from '@/components/math-background'
 import { apiFetch } from '@/lib/api'
@@ -14,6 +14,10 @@ export default function LoginPage() {
   const [mode, setMode] = useState<AuthMode>('login')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [collegesOpen, setCollegesOpen] = useState(false)
+  const [colleges, setColleges] = useState<Array<{ id: number; name: string; code: string }>>([])
+  const [selectedCollegeId, setSelectedCollegeId] = useState<number | null>(null)
+  const collegesRef = useRef<HTMLDivElement>(null)
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -45,11 +49,33 @@ export default function LoginPage() {
       if (!formData.name.trim()) {
         newErrors.name = '请输入姓名'
       }
+      if (!selectedCollegeId) {
+        newErrors.college = '请选择学院'
+      }
     }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
+
+  useEffect(() => {
+    apiFetch('/api/colleges')
+      .then((res) => res.json())
+      .then((data) => setColleges(data.colleges || []))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (collegesRef.current && !collegesRef.current.contains(e.target as Node)) {
+        setCollegesOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const selectedCollege = colleges.find((c) => c.id === selectedCollegeId)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,6 +97,7 @@ export default function LoginPage() {
               username: formData.username.trim(),
               password: formData.password,
               name: formData.name.trim(),
+              college_id: selectedCollegeId,
             }
 
       const res = await apiFetch(endpoint, {
@@ -155,6 +182,48 @@ export default function LoginPage() {
                 />
                 {errors.name && (
                   <p className="mt-1.5 text-sm text-destructive">{errors.name}</p>
+                )}
+              </div>
+            )}
+
+            {mode === 'register' && (
+              <div ref={collegesRef} className="relative">
+                <label className="block text-sm font-medium mb-2">所属学院</label>
+                <button
+                  type="button"
+                  onClick={() => setCollegesOpen(!collegesOpen)}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 rounded-lg bg-background/80 backdrop-blur-sm border border-border text-left"
+                >
+                  <GraduationCap className="w-4 h-4 text-muted-foreground" />
+                  <span className={selectedCollege ? 'text-foreground' : 'text-muted-foreground'}>
+                    {selectedCollege ? selectedCollege.name : '请选择学院'}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-muted-foreground ml-auto transition-transform ${collegesOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {errors.college && (
+                  <p className="mt-1.5 text-sm text-destructive">{errors.college}</p>
+                )}
+                {collegesOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg bg-background/95 backdrop-blur-xl border border-border z-50">
+                    {colleges.map((college) => (
+                      <button
+                        key={college.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCollegeId(college.id)
+                          setCollegesOpen(false)
+                          setErrors((prev) => ({ ...prev, college: '' }))
+                        }}
+                        className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                          college.id === selectedCollegeId
+                            ? 'bg-foreground/10 text-foreground'
+                            : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
+                        }`}
+                      >
+                        {college.name}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

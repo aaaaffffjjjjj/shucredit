@@ -50,7 +50,7 @@ if Compress is not None:
 CORS(
     app,
     supports_credentials=True,
-    origins=['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origins=re.compile(r"https?://.*"),
     allow_headers=['Content-Type', 'Authorization'],
     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 )
@@ -84,38 +84,56 @@ def invalidate_progress_cache(student_id=None):
     if student_id is None:
         _progress_cache.clear()
     else:
-        _progress_cache.pop(student_id, None)
+        keys_to_remove = [
+            k for k in _progress_cache
+            if (isinstance(k, tuple) and k[0] == student_id) or k == student_id
+        ]
+        for key in keys_to_remove:
+            _progress_cache.pop(key, None)
 
 
 def invalidate_module_structure_cache():
     """管理员修改模块结构后清除模块表缓存。"""
-    _module_rows_cache['rows'] = None
+    _module_rows_cache.clear()
     _progress_cache.clear()
 
 
-def _get_all_module_rows():
-    """缓存模块表行，减少重复全表查询。"""
+def _get_all_module_rows(college_id=None):
+    """缓存模块表行，减少重复全表查询。
+    如果指定 college_id，则只返回该学院下的模块。
+    """
     now = time.time()
+    cache_key = f'all_{college_id}'
     if (
-        _module_rows_cache['rows'] is not None
-        and now - _module_rows_cache['ts'] < _MODULE_ROWS_TTL
+        _module_rows_cache.get(cache_key)
+        and now - _module_rows_cache[cache_key]['ts'] < _MODULE_ROWS_TTL
     ):
-        return _module_rows_cache['rows']
-    rows = Module.query.all()
-    _module_rows_cache['rows'] = rows
-    _module_rows_cache['ts'] = now
+        return _module_rows_cache[cache_key]['rows']
+    q = Module.query
+    if college_id is not None:
+        q = q.filter_by(college_id=college_id)
+    rows = q.all()
+    _module_rows_cache[cache_key] = {'rows': rows, 'ts': now}
     return rows
 
 
 # =========================
 # 数据模型
 # =========================
+class College(db.Model):
+    __tablename__ = 'college'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    code = db.Column(db.String(50), nullable=False, unique=True)
+
+
 class Module(db.Model):
     __tablename__ = 'module'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     required_credits = db.Column(db.Float, nullable=False)
     parent_id = db.Column(db.Integer, db.ForeignKey('module.id'), nullable=True)
+    college_id = db.Column(db.Integer, db.ForeignKey('college.id'), nullable=False, default=1)
     children = db.relationship(
         'Module', backref=db.backref('parent', remote_side=[id])
     )
@@ -136,6 +154,8 @@ class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     major = db.Column(db.String(100))
+    college_id = db.Column(db.Integer, db.ForeignKey('college.id'), nullable=True)
+    college = db.relationship('College')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -282,12 +302,13 @@ def would_create_cycle(module_id, new_parent_id):
     return new_parent_id in get_descendant_ids(module_id)
 
 
-def compute_earned_credits(student_id):
+def compute_earned_credits(student_id, college_id=None):
     """
     按模块树后序汇总学生已修学分。
 
     Args:
         student_id: 学生主键。
+        college_id: 可选，仅统计指定学院的模块。
 
     Returns:
         ``dict[int, float]``：键为 ``module.id``，值为该模块及子树已修学分总和
@@ -304,7 +325,7 @@ def compute_earned_credits(student_id):
         if course.module_id:
             direct[course.module_id] = direct.get(course.module_id, 0) + (course.credit or 0)
 
-    all_modules = _get_all_module_rows()
+    all_modules = _get_all_module_rows(college_id)
     children_map = {}
     for mod in all_modules:
         if mod.parent_id is not None:
@@ -611,16 +632,17 @@ def _module_status(earned, remaining):
     return 'none'
 
 
-def build_progress_api_payload(student_id, use_cache=True):
+def build_progress_api_payload(student_id, use_cache=True, college_id=None):
     """生成进度页图谱与模块水桶数据（精简 JSON + 短期缓存）。"""
     now = time.time()
-    if use_cache and student_id in _progress_cache:
-        cached_at, payload = _progress_cache[student_id]
+    cache_key = (student_id, college_id)
+    if use_cache and cache_key in _progress_cache:
+        cached_at, payload = _progress_cache[cache_key]
         if now - cached_at < _PROGRESS_CACHE_TTL:
             return payload
 
-    earned_map = compute_earned_credits(student_id)
-    all_modules = _get_all_module_rows()
+    earned_map = compute_earned_credits(student_id, college_id)
+    all_modules = _get_all_module_rows(college_id)
     tree = build_progress_module_tree(all_modules, earned_map)
     graph_nodes = []
     graph_links = []
@@ -691,7 +713,7 @@ def build_progress_api_payload(student_id, use_cache=True):
             'earned': sum(r['earned'] for r in roots),
         },
     }
-    _progress_cache[student_id] = (now, payload)
+    _progress_cache[cache_key] = (now, payload)
     return payload
 
 
@@ -802,6 +824,8 @@ def login_api():
     user = User.query.filter_by(username=username).first()
     if user and check_password_hash(user.password_hash, password):
         login_user(user, remember=True)
+        student = user.student
+        college = student.college if student and student.college_id else None
         return jsonify({
             'success': True,
             'message': '登录成功',
@@ -809,6 +833,15 @@ def login_api():
                 'id': user.id,
                 'username': user.username,
             },
+            'student': {
+                'id': student.id if student else None,
+                'name': student.name if student else '',
+            },
+            'college': {
+                'id': college.id,
+                'name': college.name,
+                'code': college.code,
+            } if college else None,
         })
     return jsonify({
         'success': False,
@@ -823,6 +856,12 @@ def register_api():
     username = (data.get('username') or '').strip()
     password = data.get('password') or ''
     name = (data.get('name') or username).strip()
+    college_id = data.get('college_id')
+    if college_id is not None:
+        try:
+            college_id = int(college_id)
+        except (ValueError, TypeError):
+            college_id = None
     if not username or not password:
         return jsonify({
             'success': False,
@@ -834,7 +873,11 @@ def register_api():
             'message': '用户名已存在',
         }), 409
     try:
-        student = Student(name=name or username, major='通信工程')
+        student = Student(
+            name=name or username,
+            major='通信工程',
+            college_id=college_id,
+        )
         db.session.add(student)
         db.session.flush()
         user = User(
@@ -865,14 +908,63 @@ def logout_api():
 @app.route('/api/auth/me', methods=['GET'])
 def me_api():
     if current_user.is_authenticated:
+        student = current_user.student
+        college = student.college if student and student.college_id else None
         return jsonify({
             'authenticated': True,
             'user': {
                 'id': current_user.id,
                 'username': current_user.username,
             },
+            'student': {
+                'id': student.id if student else None,
+                'name': student.name if student else '',
+            },
+            'college': {
+                'id': college.id,
+                'name': college.name,
+                'code': college.code,
+            } if college else None,
         })
     return jsonify({'authenticated': False}), 401
+
+
+@app.route('/api/colleges', methods=['GET'])
+def api_colleges():
+    colleges = College.query.order_by(College.id).all()
+    return jsonify({
+        'colleges': [
+            {'id': c.id, 'name': c.name, 'code': c.code}
+            for c in colleges
+        ],
+    })
+
+
+@app.route('/api/user/college', methods=['POST'])
+@login_required
+def api_set_user_college():
+    data = request.get_json(silent=True) or {}
+    college_id = data.get('college_id')
+    if college_id is None:
+        return jsonify({'success': False, 'message': '请提供学院ID'}), 400
+    try:
+        college_id = int(college_id)
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': '无效的学院ID'}), 400
+
+    college = db.session.get(College, college_id)
+    if not college:
+        return jsonify({'success': False, 'message': '学院不存在'}), 404
+
+    student = current_user.student
+    student.college_id = college_id
+    db.session.commit()
+    invalidate_progress_cache(student.id)
+    return jsonify({
+        'success': True,
+        'message': '学院已切换',
+        'college': {'id': college.id, 'name': college.name, 'code': college.code},
+    })
 
 
 @app.route('/logout')
@@ -917,7 +1009,16 @@ def progress():
 @app.route('/api/progress_data')
 @login_required
 def api_progress_data():
-    payload = build_progress_api_payload(current_user.student.id)
+    college_id_str = request.args.get('college_id')
+    college_id = None
+    if college_id_str:
+        try:
+            college_id = int(college_id_str)
+        except (ValueError, TypeError):
+            pass
+    if college_id is None and current_user.student.college_id:
+        college_id = current_user.student.college_id
+    payload = build_progress_api_payload(current_user.student.id, college_id=college_id)
     return json_response_cached(payload, max_age=30)
 
 
@@ -1545,7 +1646,327 @@ def forum_post(post_id):
     return render_template('forum_post.html', post=post, comments=comments)
 
 
+# =========================
+# 管理员 JSON API
+# =========================
+def _admin_api_check():
+    """检查当前请求是否具备管理员权限。"""
+    if not current_user.is_authenticated:
+        return jsonify({'error': '未登录'}), 401
+    if current_user.username != ADMIN_USERNAME:
+        return jsonify({'error': '无权限'}), 403
+    return None
+
+
+@app.route('/api/admin/modules', methods=['GET'])
+@login_required
+def api_admin_modules():
+    err = _admin_api_check()
+    if err:
+        return err
+
+    modules = Module.query.order_by(Module.name).all()
+    return jsonify({
+        'modules': [
+            {
+                'id': m.id,
+                'name': m.name,
+                'required_credits': m.required_credits,
+                'parent_id': m.parent_id,
+                'college_id': m.college_id,
+                'children_count': len(m.children) if hasattr(m, 'children') else 0,
+            }
+            for m in modules
+        ],
+    })
+
+
+@app.route('/api/admin/modules', methods=['POST'])
+@login_required
+def api_admin_add_module():
+    err = _admin_api_check()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': '模块名称不能为空'}), 400
+
+    try:
+        credits = float(data.get('required_credits', 0))
+    except (ValueError, TypeError):
+        credits = 0
+
+    parent_id = data.get('parent_id')
+    if parent_id is not None:
+        try:
+            parent_id = int(parent_id)
+        except (ValueError, TypeError):
+            return jsonify({'error': '无效的父模块ID'}), 400
+    else:
+        parent_id = None
+
+    college_id = data.get('college_id')
+    if college_id is not None:
+        try:
+            college_id = int(college_id)
+        except (ValueError, TypeError):
+            return jsonify({'error': '无效的学院ID'}), 400
+    else:
+        college_id = 1
+
+    try:
+        mod = Module(name=name, required_credits=credits, parent_id=parent_id, college_id=college_id)
+        db.session.add(mod)
+        db.session.commit()
+        invalidate_module_structure_cache()
+        return jsonify({
+            'ok': True,
+            'module': {
+                'id': mod.id,
+                'name': mod.name,
+                'required_credits': mod.required_credits,
+                'parent_id': mod.parent_id,
+                'college_id': mod.college_id,
+            },
+        }), 201
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/admin/modules/<int:module_id>', methods=['PUT'])
+@login_required
+def api_admin_update_module(module_id):
+    err = _admin_api_check()
+    if err:
+        return err
+
+    mod = db.session.get(Module, module_id)
+    if not mod:
+        return jsonify({'error': '模块不存在'}), 404
+
+    data = request.get_json(silent=True) or {}
+    name = data.get('name')
+    if name is not None and not name.strip():
+        return jsonify({'error': '模块名称不能为空'}), 400
+
+    try:
+        if name is not None:
+            mod.name = name.strip()
+        if 'required_credits' in data:
+            mod.required_credits = float(data['required_credits'])
+        if 'parent_id' in data:
+            new_parent_id = data['parent_id']
+            if new_parent_id is not None:
+                new_parent_id = int(new_parent_id)
+                if would_create_cycle(module_id, new_parent_id):
+                    return jsonify({'error': '不能将模块移动到自身或其子模块下'}), 400
+            mod.parent_id = new_parent_id
+        if 'college_id' in data:
+            mod.college_id = int(data['college_id'])
+        db.session.commit()
+        invalidate_module_structure_cache()
+        return jsonify({'ok': True, 'module': {
+            'id': mod.id, 'name': mod.name,
+            'required_credits': mod.required_credits,
+            'parent_id': mod.parent_id, 'college_id': mod.college_id,
+        }})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/admin/modules/<int:module_id>', methods=['DELETE'])
+@login_required
+def api_admin_delete_module(module_id):
+    err = _admin_api_check()
+    if err:
+        return err
+
+    mod = db.session.get(Module, module_id)
+    if not mod:
+        return jsonify({'error': '模块不存在'}), 404
+    if mod.children:
+        return jsonify({'error': '该模块仍有子模块，无法删除'}), 400
+    if Course.query.filter_by(module_id=module_id).first():
+        return jsonify({'error': '该模块下仍有课程，无法删除'}), 400
+
+    try:
+        db.session.delete(mod)
+        db.session.commit()
+        invalidate_module_structure_cache()
+        return jsonify({'ok': True})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/admin/courses', methods=['GET'])
+@login_required
+def api_admin_courses():
+    err = _admin_api_check()
+    if err:
+        return err
+
+    courses = Course.query.order_by(Course.course_code).all()
+    result = []
+    for c in courses:
+        module_path = ''
+        if c.module:
+            path_parts = []
+            mod = c.module
+            while mod:
+                path_parts.append(normalize_module_name(mod.name))
+                mod = mod.parent
+            module_path = ' / '.join(reversed(path_parts))
+        result.append({
+            'id': c.id,
+            'course_code': c.course_code,
+            'name': c.name,
+            'credit': c.credit,
+            'module_id': c.module_id,
+            'module_path': module_path or '未分配',
+        })
+    return jsonify({'courses': result})
+
+
+@app.route('/api/admin/courses', methods=['POST'])
+@login_required
+def api_admin_add_course():
+    err = _admin_api_check()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    course_code = (data.get('course_code') or '').strip()
+    course_name = (data.get('name') or '').strip()
+    credit = data.get('credit')
+    module_id = data.get('module_id')
+
+    if not course_code or not course_name:
+        return jsonify({'error': '课程编号和名称不能为空'}), 400
+    try:
+        credit = float(credit) if credit is not None else 0
+    except (ValueError, TypeError):
+        return jsonify({'error': '学分必须是数字'}), 400
+
+    if Course.query.filter_by(course_code=course_code).first():
+        return jsonify({'error': f'课程编号 {course_code} 已存在'}), 409
+
+    try:
+        course = Course(
+            course_code=course_code,
+            name=course_name,
+            credit=credit,
+            module_id=int(module_id) if module_id is not None else None,
+        )
+        db.session.add(course)
+        db.session.commit()
+        return jsonify({
+            'ok': True,
+            'course': {
+                'id': course.id, 'course_code': course.course_code,
+                'name': course.name, 'credit': course.credit,
+                'module_id': course.module_id,
+            },
+        }), 201
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/admin/courses/<int:course_id>', methods=['PUT'])
+@login_required
+def api_admin_update_course(course_id):
+    err = _admin_api_check()
+    if err:
+        return err
+
+    course = db.session.get(Course, course_id)
+    if not course:
+        return jsonify({'error': '课程不存在'}), 404
+
+    data = request.get_json(silent=True) or {}
+    try:
+        if 'module_id' in data:
+            course.module_id = int(data['module_id']) if data['module_id'] is not None else None
+        if 'name' in data:
+            course.name = data['name'].strip()
+        if 'course_code' in data:
+            course.course_code = data['course_code'].strip()
+        if 'credit' in data:
+            course.credit = float(data['credit'])
+        db.session.commit()
+        return jsonify({'ok': True, 'course': {
+            'id': course.id, 'course_code': course.course_code,
+            'name': course.name, 'credit': course.credit,
+            'module_id': course.module_id,
+        }})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/admin/courses/<int:course_id>', methods=['DELETE'])
+@login_required
+def api_admin_delete_course(course_id):
+    err = _admin_api_check()
+    if err:
+        return err
+
+    course = db.session.get(Course, course_id)
+    if not course:
+        return jsonify({'error': '课程不存在'}), 404
+
+    try:
+        Enrollment.query.filter_by(course_id=course_id).delete()
+        db.session.delete(course)
+        db.session.commit()
+        return jsonify({'ok': True})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=False, use_reloader=False)
+
+        COLLEGES = [
+            ('理学院', 'science'),
+            ('微电子学院', 'microelectronics'),
+            ('力学与工程科学学院', 'mechanics'),
+            ('文学院', 'literature'),
+            ('社会学院', 'sociology'),
+            ('外国语学院', 'foreign_lang'),
+            ('经济学院', 'economics'),
+            ('管理学院', 'management'),
+            ('文化遗产与信息管理学院', 'cultural_heritage'),
+            ('法学院', 'law'),
+            ('通信与信息工程学院', 'communication'),
+            ('翔英学院', 'xiangying'),
+            ('计算机工程与科学学院', 'cs'),
+            ('机电工程与自动化学院', 'mechatronics'),
+            ('材料科学与工程学院', 'materials'),
+            ('环境与化学工程学院', 'env_chem'),
+            ('生命科学学院', 'life_science'),
+            ('上海美术学院', 'fine_arts'),
+            ('上海电影学院', 'film'),
+            ('新闻传播学院', 'journalism'),
+            ('马克思主义学院', 'marxism'),
+            ('国际教育学院', 'intl_edu'),
+            ('钱伟长学院', 'qwc'),
+            ('悉尼工商学院', 'sydney_business'),
+            ('中欧工程技术学院', 'ceeu'),
+            ('音乐学院', 'music'),
+            ('里斯本学院', 'lisbon'),
+            ('未来技术学院', 'future_tech'),
+        ]
+        if College.query.count() == 0:
+            for name, code in COLLEGES:
+                db.session.add(College(name=name, code=code))
+            db.session.commit()
+            print(f'已初始化 {len(COLLEGES)} 个学院')
+    app.run(host='0.0.0.0', debug=False, use_reloader=False)

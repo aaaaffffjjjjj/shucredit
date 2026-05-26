@@ -42,7 +42,7 @@ function createPlanetTexture(primary: string, highlight: string): THREE.CanvasTe
   return new THREE.CanvasTexture(canvas)
 }
 
-function Sun() {
+function Sun({ onClick }: { onClick?: () => void }) {
   const meshRef = useRef<THREE.Mesh>(null)
   useFrame(() => {
     if (meshRef.current) meshRef.current.rotation.y += 0.001
@@ -57,7 +57,20 @@ function Sun() {
         <sphereGeometry args={[4.7, 48, 48]} />
         <meshBasicMaterial color="#ffd080" transparent opacity={0.1} depthWrite={false} />
       </mesh>
-      <mesh ref={meshRef}>
+      <mesh
+        ref={meshRef}
+        onPointerOver={(e) => {
+          e.stopPropagation()
+          document.body.style.cursor = 'pointer'
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = 'auto'
+        }}
+        onClick={(e) => {
+          e.stopPropagation()
+          onClick?.()
+        }}
+      >
         <sphereGeometry args={[4.5, 64, 64]} />
         <meshStandardMaterial
           color="#fff4dc"
@@ -129,6 +142,81 @@ function ProgressRing({
   )
 }
 
+function PlanetLabel({ 
+  text, 
+  visible, 
+  positionY 
+}: { 
+  text: string, 
+  visible: boolean, 
+  positionY: number 
+}) {
+  const { camera } = useThree()
+  const elementRef = useRef<HTMLDivElement | null>(null)
+  const [labelVisible, setLabelVisible] = useState(false)
+
+  useEffect(() => {
+    if (visible && !elementRef.current) {
+      const div = document.createElement('div')
+      div.textContent = text
+      div.style.position = 'fixed'
+      div.style.pointerEvents = 'none'
+      div.style.zIndex = '10'
+      div.style.color = '#ffffff'
+      div.style.fontSize = '14px'
+      div.style.fontWeight = '500'
+      div.style.fontFamily = 'system-ui, sans-serif'
+      div.style.background = 'rgba(0, 0, 0, 0.6)'
+      div.style.backdropFilter = 'blur(8px)'
+      div.style.padding = '6px 12px'
+      div.style.borderRadius = '8px'
+      div.style.border = '1px solid rgba(255, 255, 255, 0.15)'
+      div.style.textShadow = '0 2px 8px rgba(0, 0, 0, 0.5)'
+      div.style.whiteSpace = 'nowrap'
+      div.style.transition = 'opacity 0.2s ease, transform 0.2s ease'
+      div.style.opacity = '0'
+      div.style.transform = 'translate(-50%, -50%) scale(0.9)'
+      document.body.appendChild(div)
+      elementRef.current = div
+    }
+
+    if (elementRef.current) {
+      if (visible) {
+        elementRef.current.textContent = text
+        elementRef.current.style.opacity = '1'
+        elementRef.current.style.transform = 'translate(-50%, -50%) scale(1)'
+        setLabelVisible(true)
+      } else {
+        elementRef.current.style.opacity = '0'
+        elementRef.current.style.transform = 'translate(-50%, -50%) scale(0.9)'
+        setLabelVisible(false)
+      }
+    }
+
+    return () => {
+      if (elementRef.current) {
+        elementRef.current.remove()
+        elementRef.current = null
+      }
+    }
+  }, [visible, text])
+
+  useFrame((state) => {
+    if (elementRef.current && labelVisible) {
+      const vector = new THREE.Vector3(0, positionY, 0)
+      vector.project(camera)
+      
+      const x = (vector.x * 0.5 + 0.5) * window.innerWidth
+      const y = (-(vector.y * 0.5) + 0.5) * window.innerHeight
+      
+      elementRef.current.style.left = `${x}px`
+      elementRef.current.style.top = `${y}px`
+    }
+  })
+
+  return null
+}
+
 function Planet({
   planet,
   semester,
@@ -184,6 +272,11 @@ function Planet({
 
   return (
     <group ref={groupRef}>
+      <PlanetLabel 
+        text={planet.name} 
+        visible={isHovered || isSelected} 
+        positionY={baseRadius + 0.8}
+      />
       {isHovered && (
         <ProgressRing
           percent={percent}
@@ -242,6 +335,7 @@ function Scene({
   focusedId,
   onPlanetHover,
   onPlanetClick,
+  onSunClick,
   controlsRef,
   livePositions,
 }: {
@@ -251,6 +345,7 @@ function Scene({
   focusedId: string | null
   onPlanetHover: (p: PlanetModule | null) => void
   onPlanetClick: (p: PlanetModule) => void
+  onSunClick?: () => void
   controlsRef: React.RefObject<OrbitControlsImpl | null>
   livePositions: React.MutableRefObject<Map<string, THREE.Vector3>>
 }) {
@@ -284,7 +379,7 @@ function Scene({
       <directionalLight position={[-8, 10, -6]} intensity={0.35} color="#8aa0cc" />
 
       <MathFormulaCSS2D count={180} />
-      <Sun />
+      <Sun onClick={onSunClick} />
 
       {planets.map((planet) => (
         <OrbitRing
@@ -371,6 +466,7 @@ function CameraRig({
 export interface CreditSolarSystemProps {
   semester?: number
   onPlanetClick?: (planet: PlanetModule) => void
+  onSunClick?: () => void
   planets?: PlanetModule[]
   loading?: boolean
   error?: string | null
@@ -379,11 +475,13 @@ export interface CreditSolarSystemProps {
   onModuleHover?: (planet: PlanetModule | null) => void
   refreshKey?: number
   resetViewTrigger?: number
+  collegeId?: number | null
 }
 
 export default function CreditSolarSystem({
   semester = 8,
   onPlanetClick,
+  onSunClick,
   planets: planetsProp,
   loading: loadingProp,
   error: errorProp,
@@ -392,6 +490,7 @@ export default function CreditSolarSystem({
   onModuleHover,
   refreshKey = 0,
   resetViewTrigger = 0,
+  collegeId = null,
 }: CreditSolarSystemProps) {
   const [internalPlanets, setInternalPlanets] = useState<PlanetModule[]>([])
   const [internalLoading, setInternalLoading] = useState(!planetsProp)
@@ -411,7 +510,10 @@ export default function CreditSolarSystem({
     let cancelled = false
     setInternalLoading(true)
     setInternalError(null)
-    apiFetch('/api/progress_data', { method: 'GET' })
+    const url = collegeId
+      ? `/api/progress_data?college_id=${collegeId}`
+      : '/api/progress_data'
+    apiFetch(url, { method: 'GET' })
       .then(async (res) => {
         if (res.status === 401) throw new Error('未登录，请先登录')
         if (!res.ok) {
@@ -438,7 +540,7 @@ export default function CreditSolarSystem({
     return () => {
       cancelled = true
     }
-  }, [controlled, onModulesLoaded, refreshKey])
+  }, [controlled, onModulesLoaded, refreshKey, collegeId])
 
   useEffect(() => {
     if (resetViewTrigger <= 0) return
@@ -495,6 +597,7 @@ export default function CreditSolarSystem({
           focusedId={focusedId}
           onPlanetHover={onModuleHover ?? (() => {})}
           onPlanetClick={(p) => onPlanetClick?.(p)}
+          onSunClick={onSunClick}
           controlsRef={controlsRef}
           livePositions={livePositions}
         />

@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { LogOut } from 'lucide-react'
+import { LogOut, Settings } from 'lucide-react'
 import {
   transformRootModules,
   toPlanetModules,
@@ -15,7 +15,10 @@ import { MathBackground, SCENE_BG } from '@/components/math-background'
 import TopNavbar from '@/components/top-navbar'
 import SidebarModules from '@/components/sidebar-modules'
 import PlanetDetailPanel from '@/components/planet-detail-panel'
+import ToolPanel from '@/components/tool-panel'
 import UploadPdf from '@/components/upload-pdf'
+import { CollegeSelector } from '@/components/college-selector'
+import { AdminPanel } from '@/components/admin-panel'
 import { apiFetch } from '@/lib/api'
 import { useRouter } from 'next/navigation'
 
@@ -49,14 +52,22 @@ export default function DashboardPage() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [resetViewTrigger, setResetViewTrigger] = useState(0)
   const [authChecked, setAuthChecked] = useState(false)
+  const [isToolPanelOpen, setIsToolPanelOpen] = useState(false)
+  const [collegeId, setCollegeId] = useState<number | null>(null)
+  const [isAdminMode, setIsAdminMode] = useState(false)
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false)
 
   const planets = useMemo(() => toPlanetModules(modules), [modules])
 
-  const loadProgress = useCallback(async () => {
+  const loadProgress = useCallback(async (collegeIdOverride?: number | null) => {
     setProgressLoading(true)
     setProgressError(null)
     try {
-      const res = await apiFetch('/api/progress_data', { method: 'GET' })
+      const cid = collegeIdOverride !== undefined ? collegeIdOverride : collegeId
+      const url = cid
+        ? `/api/progress_data?college_id=${cid}`
+        : '/api/progress_data'
+      const res = await apiFetch(url, { method: 'GET' })
       if (res.status === 401) {
         router.replace('/login')
         return
@@ -72,12 +83,33 @@ export default function DashboardPage() {
     } finally {
       setProgressLoading(false)
     }
-  }, [router])
+  }, [router, collegeId])
+
+  const handleCollegeChange = useCallback(
+    (newCollegeId: number) => {
+      setCollegeId(newCollegeId)
+      apiFetch('/api/user/college', {
+        method: 'POST',
+        body: JSON.stringify({ college_id: newCollegeId }),
+      }).catch(() => {
+        /* ignore persistence error */
+      })
+      loadProgress(newCollegeId)
+    },
+    [loadProgress],
+  )
 
   useEffect(() => {
     apiFetch('/api/auth/me')
-      .then((res) => {
-        if (!res.ok) router.replace('/login')
+      .then(async (res) => {
+        if (!res.ok) {
+          router.replace('/login')
+          return
+        }
+        const data = await res.json()
+        if (data.college?.id) {
+          setCollegeId(data.college.id)
+        }
       })
       .catch(() => router.replace('/login'))
       .finally(() => setAuthChecked(true))
@@ -129,7 +161,22 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen relative overflow-hidden" style={{ background: SCENE_BG }}>
       <MathBackground formulaCount={150} />
-      <header className="fixed top-4 right-4 z-50 flex items-center gap-2">
+      <header className="fixed top-4 left-4 z-50 flex items-center gap-2">
+        <CollegeSelector
+          value={collegeId}
+          onChange={handleCollegeChange}
+          onAdminActivated={() => setIsAdminMode(true)}
+        />
+        {isAdminMode && (
+          <button
+            type="button"
+            onClick={() => setAdminPanelOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 text-sm transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+            管理后台
+          </button>
+        )}
         <Link
           href="/forum"
           className="glass-card !rounded-full px-4 py-2 text-sm text-white/70 hover:text-white transition-colors"
@@ -182,6 +229,8 @@ export default function DashboardPage() {
           selectedModuleId={selectedModule}
           resetViewTrigger={resetViewTrigger}
           onPlanetClick={handlePlanetClick}
+          onSunClick={() => setIsToolPanelOpen(true)}
+          collegeId={collegeId}
         />
 
         <PlanetDetailPanel
@@ -192,6 +241,18 @@ export default function DashboardPage() {
             setSelectedModule(null)
             setFocusSubModuleId(null)
           }}
+        />
+
+        <ToolPanel
+          isOpen={isToolPanelOpen}
+          onClose={() => setIsToolPanelOpen(false)}
+          initialTool="feedback"
+        />
+
+        <AdminPanel
+          open={adminPanelOpen}
+          onClose={() => setAdminPanelOpen(false)}
+          onDataChanged={() => setRefreshKey((k) => k + 1)}
         />
       </main>
     </div>

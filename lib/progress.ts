@@ -34,12 +34,12 @@ export interface PlanetColorPair {
 }
 
 export const MODULE_COLOR_PAIRS: Array<{ key: string } & PlanetColorPair> = [
-  { key: '公共基础', primary: '#6b7280', highlight: '#9ca3af' },
-  { key: '专业基础', primary: '#4b5563', highlight: '#6b7280' },
-  { key: '专业必修', primary: '#374151', highlight: '#4b5563' },
-  { key: '专业选修', primary: '#1f2937', highlight: '#374151' },
-  { key: '个性化', primary: '#d1d5db', highlight: '#e5e7eb' },
-  { key: '专业方向', primary: '#9ca3af', highlight: '#d1d5db' },
+  { key: '公共基础', primary: '#a1a1aa', highlight: '#d4d4d8' },
+  { key: '专业基础', primary: '#71717a', highlight: '#a1a1aa' },
+  { key: '专业必修', primary: '#52525b', highlight: '#71717a' },
+  { key: '专业选修', primary: '#3f3f46', highlight: '#52525b' },
+  { key: '个性化', primary: '#27272a', highlight: '#3f3f46' },
+  { key: '专业方向', primary: '#18181b', highlight: '#27272a' },
 ]
 
 const COLOR_FALLBACK: PlanetColorPair[] = MODULE_COLOR_PAIRS.map(

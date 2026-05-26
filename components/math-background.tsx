@@ -97,45 +97,58 @@ function generateLayeredFormulas(count: number): FormulaItem[] {
   })
 }
 
-/** Three.js 场景内 CSS2D 分层数学公式 - 使用手动投影避免覆盖问题 */
+/** Three.js 场景内 CSS2D 分层数学公式 - 使用手动投影 */
 export function MathFormulaCSS2D({ count = 180 }: { count?: number }) {
   const { camera, size } = useThree()
-  const containerRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const items = useMemo(() => generateLayeredFormulas(count), [count])
-  const labelRefs = useRef<Array<{ el: HTMLDivElement; item: FormulaItem; baseX: number }>>([])
+  const labelRefs = useRef<Array<{ el: HTMLDivElement; item: FormulaItem; baseX: number; baseY: number; baseZ: number }>>([])
 
   useEffect(() => {
+    // 创建容器直接添加到 body，绝对定位，pointer-events: none
     const container = document.createElement('div')
-    container.style.position = 'absolute'
+    container.style.position = 'fixed'
     container.style.inset = '0'
     container.style.pointerEvents = 'none'
     container.style.zIndex = '0'
     container.style.overflow = 'hidden'
-    containerRef.current = container
     document.body.appendChild(container)
+    containerRef.current = container
 
+    // 创建所有标签
     const labels = items.map((item) => {
-      const div = document.createElement('div')
-      div.textContent = item.text
-      div.style.color = '#eef2ff'
-      div.style.opacity = String(item.opacity)
-      div.style.fontSize = `${item.fontSize}px`
-      div.style.fontFamily = '"Times New Roman", Georgia, serif'
-      div.style.fontStyle = 'italic'
-      div.style.fontWeight = item.layer === 'near' ? '400' : '300'
-      div.style.userSelect = 'none'
-      div.style.whiteSpace = 'nowrap'
-      div.style.position = 'absolute'
-      div.style.textShadow = item.layer === 'near' ? '0 0 12px rgba(200,220,255,0.15)' : 'none'
-      div.style.transformOrigin = 'center center'
-      container.appendChild(div)
-      return { el: div, item, baseX: item.position.x }
+      const el = document.createElement('div')
+      el.textContent = item.text
+      el.style.color = '#eef2ff'
+      el.style.opacity = String(item.opacity)
+      el.style.fontSize = `${item.fontSize}px`
+      el.style.fontFamily = '"Times New Roman", Georgia, serif'
+      el.style.fontStyle = 'italic'
+      el.style.fontWeight = item.layer === 'near' ? '400' : '300'
+      el.style.userSelect = 'none'
+      el.style.whiteSpace = 'nowrap'
+      el.style.position = 'absolute'
+      el.style.textShadow =
+        item.layer === 'near'
+          ? '0 0 12px rgba(200,220,255,0.15)'
+          : 'none'
+      el.style.transformOrigin = 'center center'
+      container.appendChild(el)
+      
+      return {
+        el,
+        item,
+        baseX: item.position.x,
+        baseY: item.position.y,
+        baseZ: item.position.z,
+      }
     })
     labelRefs.current = labels
 
     return () => {
       labels.forEach(({ el }) => el.remove())
       container.remove()
+      containerRef.current = null
       labelRefs.current = []
     }
   }, [items])
@@ -148,20 +161,25 @@ export function MathFormulaCSS2D({ count = 180 }: { count?: number }) {
   }, [size.width, size.height])
 
   useFrame((state) => {
-    const t = state.clock.elapsedTime
-    labelRefs.current.forEach(({ el, item, baseX }) => {
-      const animT = t * 0.07 + item.phase
-      const y = item.baseY + Math.sin(animT) * item.floatAmp
-      const x = baseX + Math.sin(animT * 0.6 + item.phase) * 0.15
-      const rot = t * item.rotSpeed * 35
-
-      const vector = new THREE.Vector3(x, y, item.position.z)
+    labelRefs.current.forEach(({ el, item, baseX, baseY, baseZ }) => {
+      const t = state.clock.elapsedTime * 0.07 + item.phase
+      
+      // 3D 位置动画
+      const x = baseX + Math.sin(t * 0.6 + item.phase) * 0.15
+      const y = baseY + Math.sin(t) * item.floatAmp
+      const z = baseZ
+      const rotation = state.clock.elapsedTime * item.rotSpeed * 35
+      
+      // 手动投影 3D 位置到 2D 屏幕坐标
+      const vector = new THREE.Vector3(x, y, z)
       vector.project(camera)
-
-      const ix = (vector.x * 0.5 + 0.5) * size.width
-      const iy = (-(vector.y * 0.5) + 0.5) * size.height
-
-      el.style.transform = `translate(-50%, -50%) translate(${ix}px, ${iy}px) rotate(${rot}deg)`
+      
+      // 转换为屏幕像素
+      const screenX = (vector.x * 0.5 + 0.5) * size.width
+      const screenY = (-(vector.y * 0.5) + 0.5) * size.height
+      
+      // 更新元素位置和旋转
+      el.style.transform = `translate(-50%, -50%) translate(${screenX}px, ${screenY}px) rotate(${rotation}deg)`
     })
   })
 
@@ -201,12 +219,12 @@ function initCanvasFormulas(
             : 16 + Math.random() * 14,
     opacity:
       layer === 'deep'
-        ? 0.02 + Math.random() * 0.015
+        ? 0.08 + Math.random() * 0.06
         : layer === 'far'
-          ? 0.03 + Math.random() * 0.02
+          ? 0.1 + Math.random() * 0.08
           : layer === 'mid'
-            ? 0.04 + Math.random() * 0.025
-            : 0.05 + Math.random() * 0.03,
+            ? 0.12 + Math.random() * 0.1
+            : 0.15 + Math.random() * 0.12,
     speed: 0.015 + Math.random() * 0.025,
     drift: (Math.random() - 0.5) * 0.02,
   }))

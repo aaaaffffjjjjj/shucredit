@@ -1,17 +1,25 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-修复版培养方案导入脚本（支持模块父子关系）
+修复版培养方案导入脚本（支持模块父子关系 + 多学院参数）
 功能：
 - 自动重建 module, course, enrollment 表（保留学生和用户表）
 - 根据数字序号点号数量建立模块层级
 - 导入课程并正确归属到叶子模块
+- 支持 --college 参数指定学院（名称或 ID）
+
+用法：
+  python import_curriculum.py                                          # 默认导入到通信学院
+  python import_curriculum.py --college "计算机工程与科学学院"         # 按名称指定学院
+  python import_curriculum.py --college_id 13                          # 按 ID 指定学院
+  python import_curriculum.py --no-rebuild                             # 不重建表（增量导入）
 """
 
+import argparse
 import pdfplumber
 import re
 from sqlalchemy import text
-from app import app, db, Module, Course, Enrollment
+from app import app, db, Module, Course, Enrollment, College
 
 DEBUG = True
 
@@ -151,14 +159,30 @@ def parse_curriculum(pdf_path):
     return modules, unique_courses
 
 
-def import_curriculum(pdf_path):
+def import_curriculum(pdf_path, college_id=None):
     print("解析培养方案 PDF...")
     modules, courses = parse_curriculum(pdf_path)
 
-    # 第一步：创建所有模块记录（先不设置 parent_id）
-    module_map = {}  # name -> Module 对象
+    if college_id is None:
+        college = College.query.filter_by(code='communication').first()
+        if college:
+            college_id = college.id
+        else:
+            print("警告：未找到通信学院，使用 college_id=1")
+            college_id = 1
+
+    college_obj = db.session.get(College, college_id)
+    college_name = college_obj.name if college_obj else f'ID:{college_id}'
+    print(f"导入到学院: {college_name} (ID: {college_id})")
+
+    module_map = {}
     for name, credits, parent_name, number_str in modules:
-        mod = Module(name=name, required_credits=credits, parent_id=None)
+        mod = Module(
+            name=name,
+            required_credits=credits,
+            parent_id=None,
+            college_id=college_id,
+        )
         db.session.add(mod)
         module_map[name] = mod
     db.session.commit()
@@ -194,10 +218,45 @@ def import_curriculum(pdf_path):
 
 
 if __name__ == '__main__':
-    pdf_file = r'D:\Dev\studentsystem\通信工程专业学分结构最终版 含课程编号.pdf'
+    parser = argparse.ArgumentParser(description='导入培养方案 PDF')
+    parser.add_argument(
+        '--college', type=str, default=None,
+        help='学院名称（如 "计算机工程与科学学院"）',
+    )
+    parser.add_argument(
+        '--college_id', type=int, default=None,
+        help='学院 ID（如 13）',
+    )
+    parser.add_argument(
+        '--no-rebuild', action='store_true',
+        help='不重建表（增量导入）',
+    )
+    parser.add_argument(
+        '--pdf', type=str, default=None,
+        help='PDF 文件路径（可选，默认使用通信工程 PDF）',
+    )
+    args = parser.parse_args()
+
+    pdf_file = args.pdf or r'D:\Dev\studentsystem\通信工程专业学分结构最终版 含课程编号.pdf'
+
     with app.app_context():
-        # 重建模块相关的表（清空所有课程和模块数据，保留学生和用户）
-        rebuild_module_tables()
-        # 导入培养方案
-        import_curriculum(pdf_file)
+        if not args.no_rebuild:
+            rebuild_module_tables()
+
+        if args.college_id:
+            college_id = args.college_id
+        elif args.college:
+            college = College.query.filter_by(name=args.college).first()
+            if college:
+                college_id = college.id
+            else:
+                print(f"错误：未找到学院 '{args.college}'")
+                print("可用的学院列表：")
+                for c in College.query.order_by(College.id).all():
+                    print(f"  {c.id}: {c.name} ({c.code})")
+                exit(1)
+        else:
+            college_id = None
+
+        import_curriculum(pdf_file, college_id=college_id)
         print("导入完成！")
