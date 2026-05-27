@@ -18,6 +18,7 @@ import PlanetDetailPanel from '@/components/planet-detail-panel'
 import ToolPanel from '@/components/tool-panel'
 import UploadPdf from '@/components/upload-pdf'
 import { CollegeSelector } from '@/components/college-selector'
+import { MajorSelector } from '@/components/major-selector'
 import { AdminPanel } from '@/components/admin-panel'
 import { apiFetch } from '@/lib/api'
 import { useRouter } from 'next/navigation'
@@ -54,18 +55,25 @@ export default function DashboardPage() {
   const [authChecked, setAuthChecked] = useState(false)
   const [isToolPanelOpen, setIsToolPanelOpen] = useState(false)
   const [collegeId, setCollegeId] = useState<number | null>(null)
+  const [majorId, setMajorId] = useState<number | null>(null)
   const [isAdminMode, setIsAdminMode] = useState(false)
   const [adminPanelOpen, setAdminPanelOpen] = useState(false)
 
   const planets = useMemo(() => toPlanetModules(modules), [modules])
 
-  const loadProgress = useCallback(async (collegeIdOverride?: number | null) => {
+  const loadProgress = useCallback(async (collegeIdOverride?: number | null, majorIdOverride?: number | null) => {
     setProgressLoading(true)
     setProgressError(null)
     try {
       const cid = collegeIdOverride !== undefined ? collegeIdOverride : collegeId
-      const url = cid
-        ? `/api/progress_data?college_id=${cid}`
+      const mid = majorIdOverride !== undefined ? majorIdOverride : majorId
+      
+      const params = new URLSearchParams()
+      if (cid) params.set('college_id', String(cid))
+      if (mid) params.set('major_id', String(mid))
+      
+      const url = params.toString()
+        ? `/api/progress_data?${params.toString()}`
         : '/api/progress_data'
       const res = await apiFetch(url, { method: 'GET' })
       if (res.status === 401) {
@@ -83,18 +91,38 @@ export default function DashboardPage() {
     } finally {
       setProgressLoading(false)
     }
-  }, [router, collegeId])
+  }, [router, collegeId, majorId])
 
   const handleCollegeChange = useCallback(
     (newCollegeId: number) => {
       setCollegeId(newCollegeId)
+      setMajorId(null) // 切换学院时重置专业
       apiFetch('/api/user/college', {
         method: 'POST',
         body: JSON.stringify({ college_id: newCollegeId }),
       }).catch(() => {
         /* ignore persistence error */
       })
-      loadProgress(newCollegeId)
+      // 清除专业选择
+      apiFetch('/api/user/major', {
+        method: 'POST',
+        body: JSON.stringify({ major_id: '' }),
+      }).catch(() => {})
+      loadProgress(newCollegeId, null)
+    },
+    [loadProgress],
+  )
+
+  const handleMajorChange = useCallback(
+    (newMajorId: number | null) => {
+      setMajorId(newMajorId)
+      apiFetch('/api/user/major', {
+        method: 'POST',
+        body: JSON.stringify({ major_id: newMajorId }),
+      }).catch(() => {
+        /* ignore persistence error */
+      })
+      loadProgress(undefined, newMajorId)
     },
     [loadProgress],
   )
@@ -109,6 +137,9 @@ export default function DashboardPage() {
         const data = await res.json()
         if (data.college?.id) {
           setCollegeId(data.college.id)
+        }
+        if (data.major?.id) {
+          setMajorId(data.major.id)
         }
       })
       .catch(() => router.replace('/login'))
@@ -166,6 +197,11 @@ export default function DashboardPage() {
           value={collegeId}
           onChange={handleCollegeChange}
           onAdminActivated={() => setIsAdminMode(true)}
+        />
+        <MajorSelector
+          collegeId={collegeId}
+          value={majorId}
+          onChange={handleMajorChange}
         />
         {isAdminMode && (
           <button

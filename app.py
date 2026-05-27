@@ -98,19 +98,22 @@ def invalidate_module_structure_cache():
     _progress_cache.clear()
 
 
-def _get_all_module_rows(college_id=None):
+def _get_all_module_rows(college_id=None, major_id=None):
     """缓存模块表行，减少重复全表查询。
-    如果指定 college_id，则只返回该学院下的模块。
+    如果指定 major_id，优先返回该专业下的模块；
+    否则如果指定 college_id，返回该学院下的模块。
     """
     now = time.time()
-    cache_key = f'all_{college_id}'
+    cache_key = f'all_c{college_id}_m{major_id}'
     if (
         _module_rows_cache.get(cache_key)
         and now - _module_rows_cache[cache_key]['ts'] < _MODULE_ROWS_TTL
     ):
         return _module_rows_cache[cache_key]['rows']
     q = Module.query
-    if college_id is not None:
+    if major_id is not None:
+        q = q.filter_by(major_id=major_id)
+    elif college_id is not None:
         q = q.filter_by(college_id=college_id)
     rows = q.all()
     _module_rows_cache[cache_key] = {'rows': rows, 'ts': now}
@@ -127,16 +130,27 @@ class College(db.Model):
     code = db.Column(db.String(50), nullable=False, unique=True)
 
 
+class Major(db.Model):
+    __tablename__ = 'major'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    code = db.Column(db.String(50))
+    college_id = db.Column(db.Integer, db.ForeignKey('college.id'), nullable=False)
+    college = db.relationship('College', backref='majors')
+
+
 class Module(db.Model):
     __tablename__ = 'module'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     required_credits = db.Column(db.Float, nullable=False)
     parent_id = db.Column(db.Integer, db.ForeignKey('module.id'), nullable=True)
-    college_id = db.Column(db.Integer, db.ForeignKey('college.id'), nullable=False, default=1)
+    college_id = db.Column(db.Integer, db.ForeignKey('college.id'), nullable=True)
+    major_id = db.Column(db.Integer, db.ForeignKey('major.id'), nullable=True)
     children = db.relationship(
         'Module', backref=db.backref('parent', remote_side=[id])
     )
+    major = db.relationship('Major', backref='modules')
 
 
 class Course(db.Model):
@@ -154,8 +168,10 @@ class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     major = db.Column(db.String(100))
+    major_id = db.Column(db.Integer, db.ForeignKey('major.id'), nullable=True)
     college_id = db.Column(db.Integer, db.ForeignKey('college.id'), nullable=True)
     college = db.relationship('College')
+    major_rel = db.relationship('Major', foreign_keys=[major_id])
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -632,17 +648,17 @@ def _module_status(earned, remaining):
     return 'none'
 
 
-def build_progress_api_payload(student_id, use_cache=True, college_id=None):
+def build_progress_api_payload(student_id, use_cache=True, college_id=None, major_id=None):
     """生成进度页图谱与模块水桶数据（精简 JSON + 短期缓存）。"""
     now = time.time()
-    cache_key = (student_id, college_id)
+    cache_key = (student_id, college_id, major_id)
     if use_cache and cache_key in _progress_cache:
         cached_at, payload = _progress_cache[cache_key]
         if now - cached_at < _PROGRESS_CACHE_TTL:
             return payload
 
     earned_map = compute_earned_credits(student_id, college_id)
-    all_modules = _get_all_module_rows(college_id)
+    all_modules = _get_all_module_rows(college_id, major_id)
     tree = build_progress_module_tree(all_modules, earned_map)
     graph_nodes = []
     graph_links = []
@@ -910,6 +926,7 @@ def me_api():
     if current_user.is_authenticated:
         student = current_user.student
         college = student.college if student and student.college_id else None
+        major = student.major_rel if student and student.major_id else None
         return jsonify({
             'authenticated': True,
             'user': {
@@ -925,6 +942,11 @@ def me_api():
                 'name': college.name,
                 'code': college.code,
             } if college else None,
+            'major': {
+                'id': major.id,
+                'name': major.name,
+                'code': major.code,
+            } if major else None,
         })
     return jsonify({'authenticated': False}), 401
 
@@ -964,6 +986,54 @@ def api_set_user_college():
         'success': True,
         'message': '学院已切换',
         'college': {'id': college.id, 'name': college.name, 'code': college.code},
+    })
+
+
+@app.route('/api/colleges/<int:college_id>/majors', methods=['GET'])
+def api_college_majors(college_id):
+    college = db.session.get(College, college_id)
+    if not college:
+        return jsonify({'majors': []})
+    majors = Major.query.filter_by(college_id=college_id).order_by(Major.id).all()
+    return jsonify({
+        'majors': [
+            {'id': m.id, 'name': m.name, 'code': m.code, 'college_id': m.college_id}
+            for m in majors
+        ],
+    })
+
+
+@app.route('/api/user/major', methods=['POST'])
+@login_required
+def api_set_user_major():
+    data = request.get_json(silent=True) or {}
+    major_id = data.get('major_id')
+    
+    student = current_user.student
+    if major_id is None or major_id == '':
+        student.major_id = None
+        student.major = None
+        db.session.commit()
+        invalidate_progress_cache(student.id)
+        return jsonify({'success': True, 'message': '已清除专业选择', 'major': None})
+    
+    try:
+        major_id = int(major_id)
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': '无效的专业ID'}), 400
+    
+    major = db.session.get(Major, major_id)
+    if not major:
+        return jsonify({'success': False, 'message': '专业不存在'}), 404
+    
+    student.major_id = major.id
+    student.major = major.name
+    db.session.commit()
+    invalidate_progress_cache(student.id)
+    return jsonify({
+        'success': True,
+        'message': '专业已切换',
+        'major': {'id': major.id, 'name': major.name, 'code': major.code, 'college_id': major.college_id},
     })
 
 
@@ -1010,15 +1080,29 @@ def progress():
 @login_required
 def api_progress_data():
     college_id_str = request.args.get('college_id')
+    major_id_str = request.args.get('major_id')
     college_id = None
+    major_id = None
+    
+    if major_id_str:
+        try:
+            major_id = int(major_id_str)
+        except (ValueError, TypeError):
+            pass
+    
     if college_id_str:
         try:
             college_id = int(college_id_str)
         except (ValueError, TypeError):
             pass
+    
+    if major_id is None and current_user.student.major_id:
+        major_id = current_user.student.major_id
+    
     if college_id is None and current_user.student.college_id:
         college_id = current_user.student.college_id
-    payload = build_progress_api_payload(current_user.student.id, college_id=college_id)
+    
+    payload = build_progress_api_payload(current_user.student.id, college_id=college_id, major_id=major_id)
     return json_response_cached(payload, max_age=30)
 
 
