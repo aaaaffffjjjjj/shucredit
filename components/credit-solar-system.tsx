@@ -20,7 +20,13 @@ export type { PlanetModule } from '@/lib/progress'
 
 const INITIAL_CAMERA = new THREE.Vector3(0, 6, 22)
 const INITIAL_TARGET = new THREE.Vector3(0, 0, 0)
-const FOCUS_LERP = 0.06
+const FOCUS_DURATION = 0.6 // 动画时长
+const INITIAL_FOV = 48
+const FOCUSED_FOV = 32 // 聚焦时放大
+
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+}
 
 function createPlanetTexture(primary: string, highlight: string): THREE.CanvasTexture {
   const canvas = document.createElement('canvas')
@@ -82,6 +88,51 @@ function Sun({ onClick }: { onClick?: () => void }) {
         <pointLight color="#ffe4b8" intensity={2.2} distance={90} decay={1.6} />
       </mesh>
     </group>
+  )
+}
+
+function Starfield() {
+  const { positions, colors } = useMemo(() => {
+    const count = 2000
+    const p = new Float32Array(count * 3)
+    const c = new Float32Array(count * 3)
+    for (let i = 0; i < count; i++) {
+      const r = 35 + Math.random() * 80
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(2 * Math.random() - 1)
+      p[i * 3] = r * Math.sin(phi) * Math.cos(theta)
+      p[i * 3 + 1] = (Math.random() - 0.5) * 30
+      p[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta)
+      const brightness = 0.4 + Math.random() * 0.6
+      c[i * 3] = brightness
+      c[i * 3 + 1] = brightness
+      c[i * 3 + 2] = brightness
+    }
+    return { positions: p, colors: c }
+  }, [])
+
+  return (
+    <points>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          args={[positions, 3]}
+        />
+        <bufferAttribute
+          attach="attributes-color"
+          args={[colors, 3]}
+        />
+      </bufferGeometry>
+      <pointsMaterial
+        size={0.15}
+        vertexColors
+        transparent
+        opacity={0.8}
+        sizeAttenuation
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </points>
   )
 }
 
@@ -251,6 +302,9 @@ function Planet({
   const visualEarned = planet.earned * (semester / 8)
   const percent = modulePercent({ earned: visualEarned, required: planet.required })
   const ringColor = percentColor(percent)
+  const isActive = isSelected || isHovered
+  const segments = isActive ? 48 : 24
+  const glowSegments = isActive ? 32 : 16
 
   useFrame((state, delta) => {
     angleRef.current += planet.orbitSpeed * delta
@@ -286,7 +340,7 @@ function Planet({
         />
       )}
       <mesh scale={1.15} renderOrder={1}>
-        <sphereGeometry args={[baseRadius, 48, 48]} />
+        <sphereGeometry args={[baseRadius, glowSegments, glowSegments]} />
         <meshBasicMaterial
           color={primary}
           transparent
@@ -312,7 +366,7 @@ function Planet({
           onSelect(planet)
         }}
       >
-        <sphereGeometry args={[baseRadius, 48, 48]} />
+        <sphereGeometry args={[baseRadius, segments, segments]} />
         <meshStandardMaterial
           map={surfaceMap}
           color={primary}
@@ -338,6 +392,7 @@ function Scene({
   onSunClick,
   controlsRef,
   livePositions,
+  planetsRef,
 }: {
   semester: number
   planets: PlanetModule[]
@@ -348,6 +403,7 @@ function Scene({
   onSunClick?: () => void
   controlsRef: React.RefObject<OrbitControlsImpl | null>
   livePositions: React.MutableRefObject<Map<string, THREE.Vector3>>
+  planetsRef: React.MutableRefObject<PlanetModule[]>
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
@@ -379,6 +435,7 @@ function Scene({
       <directionalLight position={[-8, 10, -6]} intensity={0.35} color="#8aa0cc" />
 
       <MathFormulaCSS2D count={180} />
+      <Starfield />
       <Sun onClick={onSunClick} />
 
       {planets.map((planet) => (
@@ -408,6 +465,13 @@ function Scene({
         />
       ))}
 
+      <CameraRig
+        focusId={focusedId}
+        livePositions={livePositions}
+        resetToken={0}
+        controlsRef={controlsRef}
+        planetsRef={planetsRef}
+      />
       <OrbitControls
         ref={controlsRef}
         enablePan
@@ -427,37 +491,144 @@ function CameraRig({
   livePositions,
   resetToken,
   controlsRef,
+  planetsRef,
 }: {
   focusId: string | null
   livePositions: React.MutableRefObject<Map<string, THREE.Vector3>>
   resetToken: number
   controlsRef: React.RefObject<OrbitControlsImpl | null>
+  planetsRef: React.MutableRefObject<PlanetModule[]>
 }) {
-  const { camera } = useThree()
-  const desired = useRef(INITIAL_CAMERA.clone())
-  const lookAt = useRef(INITIAL_TARGET.clone())
+  const { camera, invalidate } = useThree()
+  const animRef = useRef<{
+    startPos: THREE.Vector3
+    endPos: THREE.Vector3
+    startTarget: THREE.Vector3
+    endTarget: THREE.Vector3
+    startFov: number
+    endFov: number
+    elapsed: number
+    active: boolean
+    isFocusing: boolean
+  }>({
+    startPos: INITIAL_CAMERA.clone(),
+    endPos: INITIAL_CAMERA.clone(),
+    startTarget: INITIAL_TARGET.clone(),
+    endTarget: INITIAL_TARGET.clone(),
+    startFov: INITIAL_FOV,
+    endFov: INITIAL_FOV,
+    elapsed: FOCUS_DURATION,
+    active: false,
+    isFocusing: false,
+  })
+
+  const prevFocusId = useRef<string | null>(null)
 
   useEffect(() => {
-    desired.current.copy(INITIAL_CAMERA)
-    lookAt.current.copy(INITIAL_TARGET)
-    camera.position.copy(INITIAL_CAMERA)
-    camera.lookAt(INITIAL_TARGET)
     const ctrl = controlsRef.current
     if (ctrl) {
       ctrl.target.copy(INITIAL_TARGET)
       ctrl.update()
     }
+    prevFocusId.current = null
+    animRef.current.endPos.copy(INITIAL_CAMERA)
+    animRef.current.endTarget.copy(INITIAL_TARGET)
+    animRef.current.elapsed = FOCUS_DURATION
+    animRef.current.active = false
+    camera.position.copy(INITIAL_CAMERA)
+    camera.lookAt(INITIAL_TARGET)
   }, [resetToken, controlsRef, camera])
 
-  useFrame(() => {
-    if (!focusId) return
-    const live = livePositions.current.get(focusId)
-    if (live) {
-      desired.current.set(live.x + 3, live.y + 5, live.z + 7)
-      lookAt.current.copy(live)
+  useEffect(() => {
+    if (focusId === prevFocusId.current) return
+    prevFocusId.current = focusId
+
+    const ctrl = controlsRef.current
+    const a = animRef.current
+
+    a.startPos.copy(camera.position)
+    a.startTarget.copy(ctrl?.target ?? INITIAL_TARGET)
+    a.startFov = camera.fov
+
+    if (focusId) {
+      let targetPos = livePositions.current.get(focusId)
+      // 如果没有 livePosition，就从 planet 数据里算！
+      if (!targetPos) {
+        const planet = planetsRef.current.find((p) => p.id === focusId)
+        if (planet) {
+          targetPos = new THREE.Vector3(
+            Math.cos(planet.angle) * planet.orbitRadius,
+            0,
+            Math.sin(planet.angle) * planet.orbitRadius,
+          )
+        }
+      }
+      if (targetPos) {
+        // 立即开始聚焦动画 - 使用更近的距离 + FOV 缩放
+        const offset = new THREE.Vector3(5, 8, 12)
+        a.endPos.copy(targetPos).add(offset)
+        a.endTarget.copy(targetPos)
+        a.endFov = FOCUSED_FOV
+        a.elapsed = 0
+        a.active = true
+        a.isFocusing = true
+      }
+    } else {
+      // 取消聚焦，回到初始位置
+      a.endPos.copy(INITIAL_CAMERA)
+      a.endTarget.copy(INITIAL_TARGET)
+      a.endFov = INITIAL_FOV
+      a.elapsed = 0
+      a.active = true
+      a.isFocusing = false
     }
-    camera.position.lerp(desired.current, FOCUS_LERP)
-    camera.lookAt(lookAt.current)
+  }, [focusId, livePositions, controlsRef, camera, planetsRef])
+
+  useFrame((_state, delta) => {
+    const a = animRef.current
+
+    // 每帧都检查一下当前 focusId 的位置，确保更新（跟随模式）
+    if (focusId && !a.active) {
+      const live = livePositions.current.get(focusId)
+      if (live) {
+        const offset = new THREE.Vector3(5, 8, 12)
+        const targetPos = live.clone().add(offset)
+        camera.position.lerp(targetPos, 0.15)
+        camera.lookAt(live)
+        camera.fov = THREE.MathUtils.lerp(camera.fov, FOCUSED_FOV, 0.15)
+        camera.updateProjectionMatrix()
+        const ctrl = controlsRef.current
+        if (ctrl) {
+          ctrl.target.lerp(live, 0.15)
+          ctrl.update()
+        }
+        invalidate()
+      }
+    }
+
+    if (a.active) {
+      a.elapsed += delta
+      const t = Math.min(a.elapsed / FOCUS_DURATION, 1)
+      const e = easeInOutCubic(t)
+
+      camera.position.lerpVectors(a.startPos, a.endPos, e)
+      const target = new THREE.Vector3().lerpVectors(a.startTarget, a.endTarget, e)
+      camera.lookAt(target)
+      camera.fov = THREE.MathUtils.lerp(a.startFov, a.endFov, e)
+      camera.updateProjectionMatrix()
+
+      const ctrl = controlsRef.current
+      if (ctrl) {
+        ctrl.target.copy(target)
+        ctrl.update()
+      }
+
+      invalidate()
+
+      if (t >= 1) {
+        a.active = false
+      }
+    }
   })
 
   return null
@@ -499,11 +670,16 @@ export default function CreditSolarSystem({
   const [resetToken, setResetToken] = useState(0)
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const livePositions = useRef(new Map<string, THREE.Vector3>())
+  const planetsRef = useRef<PlanetModule[]>([])
 
   const controlled = planetsProp !== undefined
   const planets = controlled ? planetsProp : internalPlanets
   const loading = controlled ? (loadingProp ?? false) : internalLoading
   const error = controlled ? (errorProp ?? null) : internalError
+
+  useEffect(() => {
+    planetsRef.current = planets
+  }, [planets])
 
   useEffect(() => {
     if (controlled) return
@@ -596,10 +772,14 @@ export default function CreditSolarSystem({
           selectedId={selectedModuleId}
           focusedId={focusedId}
           onPlanetHover={onModuleHover ?? (() => {})}
-          onPlanetClick={(p) => onPlanetClick?.(p)}
+          onPlanetClick={(p) => {
+            setFocusedId(p.id)
+            onPlanetClick?.(p)
+          }}
           onSunClick={onSunClick}
           controlsRef={controlsRef}
           livePositions={livePositions}
+          planetsRef={planetsRef}
         />
       </Canvas>
     </div>

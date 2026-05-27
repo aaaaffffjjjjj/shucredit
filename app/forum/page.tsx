@@ -171,8 +171,10 @@ export default function ForumPage() {
           ))}
 
           {filteredPosts.length === 0 && (
-            <div className="py-16 text-center">
-              <p className="text-sm text-muted-foreground">暂无相关帖子</p>
+            <div className="py-20 text-center">
+              <MessageSquare className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+              <p className="text-base text-muted-foreground mb-1">暂无相关帖子</p>
+              <p className="text-xs text-muted-foreground/60">换个关键词试试，或者创建第一个帖子</p>
             </div>
           )}
         </div>

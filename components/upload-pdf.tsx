@@ -1,8 +1,9 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Upload, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
-import { apiUploadPdf } from '@/lib/api'
+import { Upload, Loader2, AlertCircle, CheckCircle2, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api'
 
 interface UploadPdfProps {
   onSuccess?: (message: string, unknownCount: number) => void
@@ -12,6 +13,7 @@ interface UploadPdfProps {
 export default function UploadPdf({ onSuccess, onError }: UploadPdfProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(0)
   const [lastMessage, setLastMessage] = useState<string | null>(null)
   const [lastUnknown, setLastUnknown] = useState<string[]>([])
 
@@ -24,23 +26,67 @@ export default function UploadPdf({ onSuccess, onError }: UploadPdfProps) {
     if (!pdfs.length) {
       const msg = '请选择 PDF 文件'
       setLastMessage(msg)
+      toast.error(msg)
       onError?.(msg)
       return
     }
 
     setUploading(true)
+    setProgress(0)
     setLastMessage(null)
     setLastUnknown([])
 
     try {
-      const data = await apiUploadPdf(pdfs)
-      const unknownCodes = (data.unknown || []).map((u) => u.course_code)
-      setLastMessage(data.message || `成功添加 ${data.inserted} 门课程`)
+      const formData = new FormData()
+      pdfs.forEach((file) => formData.append('file', file))
+
+      const data = await new Promise<any>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', '/api/upload_pdf')
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            setProgress(Math.round((e.loaded / e.total) * 100))
+          }
+        })
+
+        xhr.addEventListener('load', () => {
+          try {
+            const res = JSON.parse(xhr.responseText)
+            if (xhr.status >= 200 && xhr.status < 300 && res.ok) {
+              resolve(res)
+            } else {
+              reject(new Error(res.error || res.message || `HTTP ${xhr.status}`))
+            }
+          } catch {
+            reject(new Error('服务器返回了无效数据'))
+          }
+        })
+
+        xhr.addEventListener('error', () => reject(new Error('网络连接失败')))
+        xhr.addEventListener('abort', () => reject(new Error('上传已取消')))
+
+        xhr.send(formData)
+      })
+
+      const unknownCodes = (data.unknown || []).map((u: any) => u.course_code)
+      const msg = data.message || `成功添加 ${data.inserted} 门课程`
+      setLastMessage(msg)
       setLastUnknown(unknownCodes)
-      onSuccess?.(data.message, unknownCodes.length)
+
+      if (unknownCodes.length > 0) {
+        toast.warning(msg, {
+          description: `${unknownCodes.length} 门课程未能识别`,
+        })
+      } else {
+        toast.success(msg)
+      }
+
+      onSuccess?.(msg, unknownCodes.length)
     } catch (err) {
       const msg = err instanceof Error ? err.message : '上传失败'
       setLastMessage(msg)
+      toast.error(msg)
       onError?.(msg)
     } finally {
       setUploading(false)
@@ -70,6 +116,24 @@ export default function UploadPdf({ onSuccess, onError }: UploadPdfProps) {
         disabled={uploading}
         onChange={(e) => handleFiles(e.target.files)}
       />
+
+      {uploading && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              上传中…
+            </span>
+            <span>{progress}%</span>
+          </div>
+          <div className="w-full h-1.5 bg-foreground/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <button
         type="button"
@@ -103,7 +167,7 @@ export default function UploadPdf({ onSuccess, onError }: UploadPdfProps) {
           ) : (
             <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
           )}
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p>{lastMessage}</p>
             {lastUnknown.length > 0 && (
               <p className="mt-1 opacity-80 break-all">
@@ -113,6 +177,16 @@ export default function UploadPdf({ onSuccess, onError }: UploadPdfProps) {
               </p>
             )}
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setLastMessage(null)
+              setLastUnknown([])
+            }}
+            className="shrink-0 hover:opacity-70"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
     </div>

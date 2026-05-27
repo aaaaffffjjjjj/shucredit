@@ -19,7 +19,7 @@ import argparse
 import pdfplumber
 import re
 from sqlalchemy import text
-from app import app, db, Module, Course, Enrollment, College
+from app import app, db, Module, Course, Enrollment, College, Major
 
 DEBUG = True
 
@@ -159,7 +159,7 @@ def parse_curriculum(pdf_path):
     return modules, unique_courses
 
 
-def import_curriculum(pdf_path, college_id=None):
+def import_curriculum(pdf_path, college_id=None, major_id=None):
     print("解析培养方案 PDF...")
     modules, courses = parse_curriculum(pdf_path)
 
@@ -170,6 +170,12 @@ def import_curriculum(pdf_path, college_id=None):
         else:
             print("警告：未找到通信学院，使用 college_id=1")
             college_id = 1
+
+    if major_id is None:
+        major = Major.query.filter_by(name='通信工程').first()
+        if major:
+            major_id = major.id
+            print(f"默认使用专业: {major.name} (ID: {major_id})")
 
     college_obj = db.session.get(College, college_id)
     college_name = college_obj.name if college_obj else f'ID:{college_id}'
@@ -182,6 +188,7 @@ def import_curriculum(pdf_path, college_id=None):
             required_credits=credits,
             parent_id=None,
             college_id=college_id,
+            major_id=major_id,
         )
         db.session.add(mod)
         module_map[name] = mod
@@ -235,6 +242,14 @@ if __name__ == '__main__':
         '--pdf', type=str, default=None,
         help='PDF 文件路径（可选，默认使用通信工程 PDF）',
     )
+    parser.add_argument(
+        '--major', type=str, default=None,
+        help='专业名称（如 "通信工程"）',
+    )
+    parser.add_argument(
+        '--major_id', type=int, default=None,
+        help='专业 ID（如 33）',
+    )
     args = parser.parse_args()
 
     pdf_file = args.pdf or r'D:\Dev\studentsystem\通信工程专业学分结构最终版 含课程编号.pdf'
@@ -258,5 +273,23 @@ if __name__ == '__main__':
         else:
             college_id = None
 
-        import_curriculum(pdf_file, college_id=college_id)
+        if args.major_id:
+            major_id = args.major_id
+        elif args.major:
+            major = Major.query.filter_by(name=args.major).first()
+            if major:
+                major_id = major.id
+            else:
+                print(f"错误：未找到专业 '{args.major}'")
+                print("可用的专业列表：")
+                q = Major.query
+                if college_id is not None:
+                    q = q.filter_by(college_id=college_id)
+                for m in q.order_by(Major.id).all():
+                    print(f"  {m.id}: {m.name} (学院ID: {m.college_id})")
+                exit(1)
+        else:
+            major_id = None
+
+        import_curriculum(pdf_file, college_id=college_id, major_id=major_id)
         print("导入完成！")
