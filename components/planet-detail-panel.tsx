@@ -26,8 +26,10 @@ export default function PlanetDetailPanel({
   onClose,
 }: PlanetDetailPanelProps) {
   const [expandedSubs, setExpandedSubs] = useState<Record<string, boolean>>({})
-  const [recommendCourses, setRecommendCourses] = useState<ApiCourse[]>([])
-  const [loadingCourses, setLoadingCourses] = useState(false)
+  const [recommendCourses, setRecommendCourses] = useState<Record<string, ApiCourse[]>>({})
+  const [loadingCourses, setLoadingCourses] = useState<Record<string, boolean>>({})
+  const [mainModuleCourses, setMainModuleCourses] = useState<ApiCourse[]>([])
+  const [loadingMainCourses, setLoadingMainCourses] = useState(false)
 
   const module = moduleId ? getModuleById(allModules, moduleId) : undefined
   const children = moduleId ? getChildModules(allModules, moduleId) : []
@@ -44,24 +46,41 @@ export default function PlanetDetailPanel({
 
   useEffect(() => {
     if (!moduleId || children.length > 0) return
-    
-    const loadCourses = async () => {
-      setLoadingCourses(true)
-      try {
-        const courses = await fetchRecommendCourses(Number(moduleId))
-        setRecommendCourses(courses)
-      } catch (error) {
-        console.error('加载推荐课程失败:', error)
-      } finally {
-        setLoadingCourses(false)
-      }
-    }
-    
-    loadCourses()
+    setLoadingMainCourses(true)
+    fetchRecommendCourses(Number(moduleId))
+      .then((courses) => {
+        setMainModuleCourses(courses)
+      })
+      .catch((error) => {
+        console.error('加载主模块推荐课程失败:', error)
+        setMainModuleCourses([])
+      })
+      .finally(() => {
+        setLoadingMainCourses(false)
+      })
   }, [moduleId, children.length])
 
+  const loadSubModuleCourses = async (subModuleId: string) => {
+    setLoadingCourses((prev) => ({ ...prev, [subModuleId]: true }))
+    try {
+      const courses = await fetchRecommendCourses(Number(subModuleId))
+      setRecommendCourses((prev) => ({ ...prev, [subModuleId]: courses }))
+    } catch (error) {
+      console.error('加载推荐课程失败:', error)
+      setRecommendCourses((prev) => ({ ...prev, [subModuleId]: [] }))
+    } finally {
+      setLoadingCourses((prev) => ({ ...prev, [subModuleId]: false }))
+    }
+  }
+
   const toggleSub = (subId: string) => {
-    setExpandedSubs((prev) => ({ ...prev, [subId]: !prev[subId] }))
+    setExpandedSubs((prev) => {
+      const isExpanded = !prev[subId]
+      if (isExpanded && !recommendCourses[subId]) {
+        loadSubModuleCourses(subId)
+      }
+      return { ...prev, [subId]: isExpanded }
+    })
   }
 
   if (!moduleId || !module) return null
@@ -138,29 +157,63 @@ export default function PlanetDetailPanel({
                       </span>
                     </button>
                     {expanded && (
-                      <div className="px-2 pb-2 pt-0">
-                        <div className="flex items-center justify-between text-xs px-2 py-1">
-                          <span className="text-white/50">学分</span>
-                          <span className="tabular-nums">
-                            <span className="text-emerald-400">{formatCredits(child.earned)}</span>
-                            <span className="text-white/30"> / </span>
-                            <span className="text-white/50">{formatCredits(child.required)}</span>
-                          </span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden mx-2 my-1">
-                          <div
-                            className="h-full rounded-full"
-                            style={{ width: `${Math.min(cp, 100)}%`, backgroundColor: percentColor(cp) }}
-                          />
-                        </div>
-                        {child.earned >= child.required && child.required > 0 && (
-                          <div className="flex items-center gap-1 px-2 py-1">
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            <span className="text-xs text-emerald-400/70">已完成</span>
+                        <div className="px-2 pb-2 pt-0">
+                          <div className="flex items-center justify-between text-xs px-2 py-1">
+                            <span className="text-white/50">学分</span>
+                            <span className="tabular-nums">
+                              <span className="text-emerald-400">{formatCredits(child.earned)}</span>
+                              <span className="text-white/30"> / </span>
+                              <span className="text-white/50">{formatCredits(child.required)}</span>
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    )}
+                          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden mx-2 my-1">
+                            <div
+                              className="h-full rounded-full"
+                              style={{ width: `${Math.min(cp, 100)}%`, backgroundColor: percentColor(cp) }}
+                            />
+                          </div>
+                          {child.earned >= child.required && child.required > 0 && (
+                            <div className="flex items-center gap-1 px-2 py-1">
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span className="text-xs text-emerald-400/70">已完成</span>
+                            </div>
+                          )}
+                          <div className="border-t border-white/8 mt-2 pt-2">
+                            <p className="text-xs text-white/45 uppercase tracking-wider mb-2 px-2 flex items-center gap-1">
+                              <BookOpen className="w-3 h-3" />
+                              推荐课程
+                            </p>
+                            {loadingCourses[subId] ? (
+                              <div className="flex items-center justify-center py-4">
+                                <Clock className="w-4 h-4 text-white/40 animate-spin" />
+                              </div>
+                            ) : (recommendCourses[subId]?.length === 0 || !recommendCourses[subId]) ? (
+                              <p className="text-xs text-white/45 px-2 py-2 rounded-lg bg-white/5">
+                                暂无推荐课程
+                              </p>
+                            ) : (
+                              <ul className="space-y-1.5 px-1">
+                                {recommendCourses[subId]?.map((course) => (
+                                  <li
+                                    key={course.id}
+                                    className="rounded-lg bg-white/5 border border-white/6 p-2"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-medium truncate">{course.name}</p>
+                                        <p className="text-xs text-white/40">{course.course_code}</p>
+                                      </div>
+                                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 shrink-0">
+                                        {course.credit} 学分
+                                      </span>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      )}
                   </li>
                 )
               })}
@@ -172,17 +225,17 @@ export default function PlanetDetailPanel({
               <BookOpen className="w-3 h-3" />
               推荐课程
             </p>
-            {loadingCourses ? (
+            {loadingMainCourses ? (
               <div className="flex items-center justify-center py-8">
                 <Clock className="w-5 h-5 text-white/40 animate-spin" />
               </div>
-            ) : recommendCourses.length === 0 ? (
+            ) : mainModuleCourses.length === 0 ? (
               <p className="text-sm text-white/45 px-2 py-3 rounded-xl bg-white/5">
                 暂无推荐课程
               </p>
             ) : (
               <ul className="space-y-2">
-                {recommendCourses.map((course) => (
+                {mainModuleCourses.map((course) => (
                   <li
                     key={course.id}
                     className="rounded-xl bg-white/5 border border-white/8 p-3"

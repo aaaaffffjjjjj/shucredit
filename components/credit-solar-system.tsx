@@ -20,9 +20,9 @@ export type { PlanetModule } from '@/lib/progress'
 
 const INITIAL_CAMERA = new THREE.Vector3(0, 6, 22)
 const INITIAL_TARGET = new THREE.Vector3(0, 0, 0)
-const FOCUS_DURATION = 0.6 // 动画时长
+const FOCUS_DURATION = 0.6
 const INITIAL_FOV = 48
-const FOCUSED_FOV = 32 // 聚焦时放大
+const FOCUSED_FOV = 32
 
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
@@ -114,14 +114,8 @@ function Starfield() {
   return (
     <points>
       <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          args={[positions, 3]}
-        />
-        <bufferAttribute
-          attach="attributes-color"
-          args={[colors, 3]}
-        />
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-color" args={[colors, 3]} />
       </bufferGeometry>
       <pointsMaterial
         size={0.15}
@@ -193,14 +187,14 @@ function ProgressRing({
   )
 }
 
-function PlanetLabel({ 
-  text, 
-  visible, 
-  positionY 
-}: { 
-  text: string, 
-  visible: boolean, 
-  positionY: number 
+function PlanetLabel({
+  text,
+  visible,
+  positionY,
+}: {
+  text: string
+  visible: boolean
+  positionY: number
 }) {
   const { camera } = useThree()
   const elementRef = useRef<HTMLDivElement | null>(null)
@@ -252,14 +246,12 @@ function PlanetLabel({
     }
   }, [visible, text])
 
-  useFrame((state) => {
+  useFrame(() => {
     if (elementRef.current && labelVisible) {
       const vector = new THREE.Vector3(0, positionY, 0)
       vector.project(camera)
-      
       const x = (vector.x * 0.5 + 0.5) * window.innerWidth
       const y = (-(vector.y * 0.5) + 0.5) * window.innerHeight
-      
       elementRef.current.style.left = `${x}px`
       elementRef.current.style.top = `${y}px`
     }
@@ -326,9 +318,9 @@ function Planet({
 
   return (
     <group ref={groupRef}>
-      <PlanetLabel 
-        text={planet.name} 
-        visible={isHovered || isSelected} 
+      <PlanetLabel
+        text={planet.name}
+        visible={isHovered || isSelected}
         positionY={baseRadius + 0.8}
       />
       {isHovered && (
@@ -552,7 +544,6 @@ function CameraRig({
 
     if (focusId) {
       let targetPos = livePositions.current.get(focusId)
-      // 如果没有 livePosition，就从 planet 数据里算！
       if (!targetPos) {
         const planet = planetsRef.current.find((p) => p.id === focusId)
         if (planet) {
@@ -564,7 +555,6 @@ function CameraRig({
         }
       }
       if (targetPos) {
-        // 立即开始聚焦动画 - 使用更近的距离 + FOV 缩放
         const offset = new THREE.Vector3(5, 8, 12)
         a.endPos.copy(targetPos).add(offset)
         a.endTarget.copy(targetPos)
@@ -574,7 +564,6 @@ function CameraRig({
         a.isFocusing = true
       }
     } else {
-      // 取消聚焦，回到初始位置
       a.endPos.copy(INITIAL_CAMERA)
       a.endTarget.copy(INITIAL_TARGET)
       a.endFov = INITIAL_FOV
@@ -587,7 +576,6 @@ function CameraRig({
   useFrame((_state, delta) => {
     const a = animRef.current
 
-    // 每帧都检查一下当前 focusId 的位置，确保更新（跟随模式）
     if (focusId && !a.active) {
       const live = livePositions.current.get(focusId)
       if (live) {
@@ -700,9 +688,7 @@ export default function CreditSolarSystem({
       })
       .then((data) => {
         if (cancelled) return
-        const transformed = toPlanetModules(
-          transformRootModules(data.modules || []),
-        )
+        const transformed = toPlanetModules(transformRootModules(data.modules || []))
         setInternalPlanets(transformed)
         onModulesLoaded?.(transformed)
       })
@@ -757,14 +743,20 @@ export default function CreditSolarSystem({
 
   if (!planets.length) {
     return (
-      <p className="w-full h-full flex items-center justify-center text-white/50 text-sm" style={{ background: SCENE_BG }}>
+      <p
+        className="w-full h-full flex items-center justify-center text-white/50 text-sm"
+        style={{ background: SCENE_BG }}
+      >
         暂无顶级模块数据
       </p>
     )
   }
 
   return (
-    <div className="w-full h-full overflow-hidden relative" style={{ background: 'transparent', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>
+    <div
+      className="w-full h-full overflow-hidden relative"
+      style={{ background: 'transparent', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
+    >
       <Canvas camera={{ position: [0, 6, 22], fov: 48 }} gl={{ antialias: true, alpha: true }}>
         <Scene
           semester={semester}

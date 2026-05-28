@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>培养方案导入工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .glass-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        .glass-input:focus {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.4);
+            outline: none;
+        }
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s;
+        }
+        .glass-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .glass-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .glass-btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+        }
+        .glass-btn-primary:hover {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        }
+        .glass-btn-success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            border: none;
+        }
+        .glass-btn-success:hover {
+            background: linear-gradient(135deg, #38ef7d 0%, #11998e 100%);
+        }
+        .glass-table {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .glass-table th {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .glass-table tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .upload-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            transition: all 0.3s;
+        }
+        .upload-zone:hover {
+            border-color: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .upload-zone.dragover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        .module-tree {
+            padding-left: 20px;
+        }
+        .module-tree.level-0 {
+            padding-left: 0;
+        }
+        .module-tree.level-1 {
+            padding-left: 30px;
+        }
+        .module-tree.level-2 {
+            padding-left: 60px;
+        }
+        .toast {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        select option {
+            background: #1a1a2e;
+            color: white;
+        }
+    </style>
+</head>
+<body class="text-white">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <div class="glass rounded-2xl p-6 mb-6">
+            <h1 class="text-3xl font-bold mb-2 text-center bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                培养方案导入工具
+            </h1>
+            <p class="text-center text-white/60 text-sm">上传 PDF 文件，自动解析并导入培养方案数据</p>
+        </div>
+
+        <div class="glass rounded-2xl p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4 text-white/90">选择学院和专业</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-white/70 text-sm mb-2">学院</label>
+                    <select id="collegeSelect" class="w-full glass-input rounded-lg px-4 py-3">
+                        <option value="">请选择学院</option>
+                        {% for college in colleges %}
+                        <option value="{{ college.id }}">{{ college.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-white/70 text-sm mb-2">专业</label>
+                    <select id="majorSelect" class="w-full glass-input rounded-lg px-4 py-3" disabled>
+                        <option value="">请先选择学院</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass rounded-2xl p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4 text-white/90">上传培养方案 PDF</h2>
+            <div id="uploadZone" class="upload-zone rounded-xl p-8 text-center cursor-pointer">
+                <div id="uploadContent">
+                    <div class="text-5xl mb-4">📄</div>
+                    <p class="text-white/70 mb-2">点击或拖拽 PDF 文件到此处</p>
+                    <p class="text-white/50 text-sm">支持 .pdf 格式</p>
+                </div>
+                <div id="fileInfo" class="hidden">
+                    <div class="text-5xl mb-4">✅</div>
+                    <p id="fileName" class="text-white/90 mb-2"></p>
+                    <p id="fileSize" class="text-white/50 text-sm"></p>
+                </div>
+                <input type="file" id="fileInput" accept=".pdf" class="hidden">
+            </div>
+            
+            <div class="mt-4 flex gap-3">
+                <button id="parseBtn" class="glass-btn-primary flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-50" disabled>
+                    <span id="parseBtnText">开始解析</span>
+                    <div id="parseSpinner" class="spinner inline-block ml-2 hidden"></div>
+                </button>
+                <button id="resetBtn" class="glass-btn px-6 py-3 rounded-xl font-medium text-white">
+                    重置
+                </button>
+            </div>
+        </div>
+
+        <div id="previewSection" class="hidden">
+            <div class="glass rounded-2xl p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-white/90">解析结果预览</h2>
+                    <div class="flex gap-2">
+                        <button id="exportJsonBtn" class="glass-btn px-4 py-2 rounded-lg text-sm text-white/80">
+                            导出 JSON
+                        </button>
+                        <button id="importJsonBtn" class="glass-btn px-4 py-2 rounded-lg text-sm text-white/80">
+                            导入 JSON
+                        </button>
+                        <input type="file" id="jsonInput" accept=".json" class="hidden">
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-white/70 text-sm mb-2">冲突处理策略</label>
+                    <select id="conflictStrategy" class="glass-input rounded-lg px-4 py-2">
+                        <option value="skip">跳过已存在的数据</option>
+                        <option value="overwrite">覆盖已存在的数据</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-lg font-medium mb-3 text-white/80">模块列表</h3>
+                        <div class="overflow-x-auto max-h-80 overflow-y-auto">
+                            <table class="w-full glass-table rounded-lg">
+                                <thead class="sticky top-0">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-white/70 text-sm">模块名称</th>
+                                        <th class="px-4 py-2 text-left text-white/70 text-sm">学分</th>
+                                        <th class="px-4 py-2 text-left text-white/70 text-sm">父模块</th>
+                                        <th class="px-4 py-2 text-left text-white/70 text-sm">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="modulesTable">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-medium mb-3 text-white/80">课程列表</h3>
+                        <div class="overflow-x-auto max-h-80 overflow-y-auto">
+                            <table class="w-full glass-table rounded-lg">
+                                <thead class="sticky top-0">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-white/70 text-sm">课程编号</th>
+                                        <th class="px-4 py-2 text-left text-white/70 text-sm">课程名称</th>
+                                        <th class="px-4 py-2 text-left text-white/70 text-sm">学分</th>
+                                        <th class="px-4 py-2 text-left text-white/70 text-sm">所属模块</th>
+                                        <th class="px-4 py-2 text-left text-white/70 text-sm">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="coursesTable">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass rounded-2xl p-6">
+                <button id="importBtn" class="glass-btn-success w-full py-4 rounded-xl font-bold text-white text-lg">
+                    <span id="importBtnText">确认导入数据库</span>
+                    <div id="importSpinner" class="spinner inline-block ml-2 hidden"></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirmModal" class="fixed inset-0 z-[70] flex items-center justify-center hidden">
+        <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeConfirmModal()"></div>
+        <div class="relative glass rounded-2xl p-6 max-w-md w-full mx-4 animate-[fade-in-scale_0.2s_ease-out]">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">⚠️ 确认导入</h3>
+                <button onclick="closeConfirmModal()" class="p-2 hover:bg-white/10 rounded-full text-white/70 hover:text-white">
+                    <span class="text-xl">&times;</span>
+                </button>
+            </div>
+            
+            <div class="space-y-4 mb-6">
+                <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+                    <p class="text-yellow-400 text-sm font-medium mb-2">即将导入以下数据：</p>
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                            <span class="text-white/60">学院：</span>
+                            <span id="confirmCollege" class="text-white"></span>
+                        </div>
+                        <div>
+                            <span class="text-white/60">专业：</span>
+                            <span id="confirmMajor" class="text-white"></span>
+                        </div>
+                        <div>
+                            <span class="text-white/60">模块数：</span>
+                            <span id="confirmModules" class="text-white font-bold"></span>
+                        </div>
+                        <div>
+                            <span class="text-white/60">课程数：</span>
+                            <span id="confirmCourses" class="text-white font-bold"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+                    <p class="text-red-400 text-sm font-medium mb-2">⚠️ 重要提醒：</p>
+                    <ul class="text-white/70 text-xs space-y-1">
+                        <li>• 此操作将修改数据库中的数据</li>
+                        <li>• 请确保已选择正确的学院和专业</li>
+                        <li>• 重复数据将根据您选择的策略处理</li>
+                        <li>• 操作完成后无法撤销</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <label class="text-white/70 text-sm mb-2 block">冲突处理策略：</label>
+                    <select id="confirmConflictStrategy" class="glass-input rounded-lg px-4 py-2 w-full">
+                        <option value="skip">跳过已存在的数据</option>
+                        <option value="overwrite">覆盖已存在的数据</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="closeConfirmModal()" class="flex-1 glass-btn py-3 rounded-xl font-medium text-white">
+                    取消
+                </button>
+                <button onclick="confirmImport()" class="flex-1 glass-btn-success py-3 rounded-xl font-medium text-white">
+                    <span id="confirmBtnText">确认导入</span>
+                    <div id="confirmSpinner" class="spinner inline-block ml-2 hidden"></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <script>
+        let colleges = [];
+        let majors = [];
+        let parsedModules = [];
+        let parsedCourses = [];
+        let selectedCollegeId = null;
+        let selectedMajorId = null;
+        let selectedFile = null;
+
+        const collegeSelect = document.getElementById('collegeSelect');
+        const majorSelect = document.getElementById('majorSelect');
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const parseBtn = document.getElementById('parseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const importBtn = document.getElementById('importBtn');
+        const previewSection = document.getElementById('previewSection');
+        const modulesTable = document.getElementById('modulesTable');
+        const coursesTable = document.getElementById('coursesTable');
+        const conflictStrategy = document.getElementById('conflictStrategy');
+        const exportJsonBtn = document.getElementById('exportJsonBtn');
+        const importJsonBtn = document.getElementById('importJsonBtn');
+        const jsonInput = document.getElementById('jsonInput');
+
+        // 学院数据已通过后端渲染到HTML中，无需AJAX加载
+        function initCollegesFromHTML() {
+            const options = collegeSelect.querySelectorAll('option');
+            options.forEach(opt => {
+                if (opt.value) {
+                    colleges.push({ id: parseInt(opt.value), name: opt.textContent });
+                }
+            });
+        }
+
+        async function loadMajors(collegeId) {
+            try {
+                const res = await fetch(`http://localhost:5000/api/majors?college_id=${collegeId}`);
+                const data = await res.json();
+                majors = data.majors || data;
+                majorSelect.innerHTML = '<option value="">请选择专业</option>';
+                majors.forEach(major => {
+                    const option = document.createElement('option');
+                    option.value = major.id;
+                    option.textContent = major.name;
+                    majorSelect.appendChild(option);
+                });
+                majorSelect.disabled = false;
+            } catch (error) {
+                showToast('加载专业列表失败', 'error');
+            }
+        }
+
+        collegeSelect.addEventListener('change', (e) => {
+            selectedCollegeId = e.target.value ? parseInt(e.target.value) : null;
+            selectedMajorId = null;
+            majorSelect.value = '';
+            if (selectedCollegeId) {
+                loadMajors(selectedCollegeId);
+            } else {
+                majorSelect.innerHTML = '<option value="">请先选择学院</option>';
+                majorSelect.disabled = true;
+            }
+            updateParseButton();
+        });
+
+        majorSelect.addEventListener('change', (e) => {
+            selectedMajorId = e.target.value ? parseInt(e.target.value) : null;
+            updateParseButton();
+        });
+
+        function updateParseButton() {
+            parseBtn.disabled = !selectedMajorId || !selectedFile;
+        }
+
+        uploadZone.addEventListener('click', () => fileInput.click());
+        
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            if (!file.name.toLowerCase().endsWith('.pdf')) {
+                showToast('请选择 PDF 文件', 'error');
+                return;
+            }
+            selectedFile = file;
+            document.getElementById('uploadContent').classList.add('hidden');
+            document.getElementById('fileInfo').classList.remove('hidden');
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = formatFileSize(file.size);
+            updateParseButton();
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        parseBtn.addEventListener('click', async () => {
+            if (!selectedFile || !selectedMajorId) return;
+
+            const parseBtnText = document.getElementById('parseBtnText');
+            const parseSpinner = document.getElementById('parseSpinner');
+            
+            parseBtnText.textContent = '解析中...';
+            parseSpinner.classList.remove('hidden');
+            parseBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('action', 'parse');
+
+            try {
+                const res = await fetch('http://localhost:5000/admin/import_curriculum', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || '解析失败');
+                }
+
+                parsedModules = data.modules || [];
+                parsedCourses = data.courses || [];
+
+                if (data.college_name && data.college_name !== '未知学院') {
+                    const collegeOption = Array.from(collegeSelect.options).find(
+                        opt => opt.text === data.college_name
+                    );
+                    if (collegeOption) {
+                        collegeSelect.value = collegeOption.value;
+                        selectedCollegeId = parseInt(collegeOption.value);
+                        await loadMajors(selectedCollegeId);
+                        
+                        if (data.major_name && data.major_name !== '未知专业') {
+                            const majorOption = Array.from(majorSelect.options).find(
+                                opt => opt.text === data.major_name
+                            );
+                            if (majorOption) {
+                                majorSelect.value = majorOption.value;
+                                selectedMajorId = parseInt(majorOption.value);
+                            }
+                        }
+                    }
+                }
+
+                if (parsedModules.length === 0 && parsedCourses.length === 0) {
+                    showToast('未解析到任何数据，请检查 PDF 格式', 'warning');
+                } else {
+                    renderPreview();
+                    previewSection.classList.remove('hidden');
+                    showToast(`解析成功：${parsedModules.length} 个模块，${parsedCourses.length} 门课程`, 'success');
+                }
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                parseBtnText.textContent = '开始解析';
+                parseSpinner.classList.add('hidden');
+                parseBtn.disabled = false;
+            }
+        });
+
+        function renderPreview() {
+            modulesTable.innerHTML = '';
+            coursesTable.innerHTML = '';
+
+            const moduleOptions = parsedModules.map(m => 
+                `<option value="${m.name}">${m.name}</option>`
+            ).join('');
+
+            parsedModules.forEach((mod, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-4 py-2">
+                        <input type="text" value="${mod.name}" 
+                            class="glass-input rounded px-2 py-1 w-full text-sm"
+                            onchange="updateModule(${index}, 'name', this.value)">
+                    </td>
+                    <td class="px-4 py-2">
+                        <input type="number" step="0.5" value="${mod.credits}" 
+                            class="glass-input rounded px-2 py-1 w-20 text-sm"
+                            onchange="updateModule(${index}, 'credits', this.value)">
+                    </td>
+                    <td class="px-4 py-2">
+                        <select class="glass-input rounded px-2 py-1 w-full text-sm"
+                            onchange="updateModule(${index}, 'parent_name', this.value)">
+                            <option value="">无</option>
+                            ${moduleOptions}
+                        </select>
+                    </td>
+                    <td class="px-4 py-2">
+                        <button onclick="deleteModule(${index})" 
+                            class="text-red-400 hover:text-red-300 text-sm">删除</button>
+                    </td>
+                `;
+                modulesTable.appendChild(row);
+            });
+
+            parsedCourses.forEach((course, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-4 py-2">
+                        <input type="text" value="${course.code}" 
+                            class="glass-input rounded px-2 py-1 w-full text-sm"
+                            onchange="updateCourse(${index}, 'code', this.value)">
+                    </td>
+                    <td class="px-4 py-2">
+                        <input type="text" value="${course.name}" 
+                            class="glass-input rounded px-2 py-1 w-full text-sm"
+                            onchange="updateCourse(${index}, 'name', this.value)">
+                    </td>
+                    <td class="px-4 py-2">
+                        <input type="number" step="0.5" value="${course.credit}" 
+                            class="glass-input rounded px-2 py-1 w-20 text-sm"
+                            onchange="updateCourse(${index}, 'credit', this.value)">
+                    </td>
+                    <td class="px-4 py-2">
+                        <select class="glass-input rounded px-2 py-1 w-full text-sm"
+                            onchange="updateCourse(${index}, 'module_name', this.value)">
+                            <option value="">选择模块</option>
+                            ${moduleOptions}
+                        </select>
+                    </td>
+                    <td class="px-4 py-2">
+                        <button onclick="deleteCourse(${index})" 
+                            class="text-red-400 hover:text-red-300 text-sm">删除</button>
+                    </td>
+                `;
+                coursesTable.appendChild(row);
+            });
+        }
+
+        window.updateModule = function(index, field, value) {
+            if (field === 'credits') {
+                parsedModules[index][field] = parseFloat(value);
+            } else {
+                parsedModules[index][field] = value;
+            }
+        };
+
+        window.updateCourse = function(index, field, value) {
+            if (field === 'credit') {
+                parsedCourses[index][field] = parseFloat(value);
+            } else {
+                parsedCourses[index][field] = value;
+            }
+        };
+
+        window.deleteModule = function(index) {
+            parsedModules.splice(index, 1);
+            renderPreview();
+        };
+
+        window.deleteCourse = function(index) {
+            parsedCourses.splice(index, 1);
+            renderPreview();
+        };
+
+        importBtn.addEventListener('click', () => {
+            if (!selectedMajorId || !selectedCollegeId) {
+                showToast('请先选择学院和专业', 'error');
+                return;
+            }
+
+            if (parsedModules.length === 0 && parsedCourses.length === 0) {
+                showToast('没有数据可导入', 'error');
+                return;
+            }
+
+            openConfirmModal();
+        });
+
+        function openConfirmModal() {
+            const collegeName = colleges.find(c => c.id === selectedCollegeId)?.name || '未知';
+            const majorName = majors.find(m => m.id === selectedMajorId)?.name || '未知';
+            
+            document.getElementById('confirmCollege').textContent = collegeName;
+            document.getElementById('confirmMajor').textContent = majorName;
+            document.getElementById('confirmModules').textContent = parsedModules.length;
+            document.getElementById('confirmCourses').textContent = parsedCourses.length;
+            document.getElementById('confirmConflictStrategy').value = conflictStrategy.value;
+            
+            document.getElementById('confirmModal').classList.remove('hidden');
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirmModal').classList.add('hidden');
+        }
+
+        async function confirmImport() {
+            const confirmBtnText = document.getElementById('confirmBtnText');
+            const confirmSpinner = document.getElementById('confirmSpinner');
+            
+            confirmBtnText.textContent = '导入中...';
+            confirmSpinner.classList.remove('hidden');
+
+            try {
+                const res = await fetch('http://localhost:5000/admin/import_curriculum', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'import',
+                        college_id: selectedCollegeId,
+                        major_id: selectedMajorId,
+                        modules: parsedModules,
+                        courses: parsedCourses,
+                        conflict_strategy: document.getElementById('confirmConflictStrategy').value
+                    })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || '导入失败');
+                }
+
+                closeConfirmModal();
+                
+                showToast(
+                    `导入成功！添加 ${data.imported_modules} 个模块，${data.imported_courses} 门课程` +
+                    (data.skipped_modules > 0 ? `，跳过 ${data.skipped_modules} 个模块` : '') +
+                    (data.skipped_courses > 0 ? `，跳过 ${data.skipped_courses} 门课程` : ''),
+                    'success'
+                );
+                
+                setTimeout(() => {
+                    resetForm();
+                }, 2000);
+            } catch (error) {
+                closeConfirmModal();
+                showToast(error.message, 'error');
+            } finally {
+                confirmBtnText.textContent = '确认导入';
+                confirmSpinner.classList.add('hidden');
+            }
+        }
+
+        resetBtn.addEventListener('click', resetForm);
+
+        function resetForm() {
+            selectedFile = null;
+            selectedCollegeId = null;
+            selectedMajorId = null;
+            parsedModules = [];
+            parsedCourses = [];
+            
+            collegeSelect.value = '';
+            majorSelect.value = '';
+            majorSelect.innerHTML = '<option value="">请先选择学院</option>';
+            majorSelect.disabled = true;
+            
+            document.getElementById('uploadContent').classList.remove('hidden');
+            document.getElementById('fileInfo').classList.add('hidden');
+            fileInput.value = '';
+            
+            previewSection.classList.add('hidden');
+            modulesTable.innerHTML = '';
+            coursesTable.innerHTML = '';
+            
+            updateParseButton();
+        }
+
+        exportJsonBtn.addEventListener('click', () => {
+            const data = {
+                modules: parsedModules,
+                courses: parsedCourses
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'curriculum_data.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('已导出 JSON 文件', 'success');
+        });
+
+        importJsonBtn.addEventListener('click', () => jsonInput.click());
+
+        jsonInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        parsedModules = data.modules || [];
+                        parsedCourses = data.courses || [];
+                        renderPreview();
+                        previewSection.classList.remove('hidden');
+                        showToast(`从 JSON 导入：${parsedModules.length} 个模块，${parsedCourses.length} 门课程`, 'success');
+                    } catch (error) {
+                        showToast('JSON 格式错误', 'error');
+                    }
+                };
+                reader.readAsText(file);
+            }
+            e.target.value = '';
+        });
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-green-500/80' : 
+                           type === 'error' ? 'bg-red-500/80' : 
+                           type === 'warning' ? 'bg-yellow-500/80' : 'bg-blue-500/80';
+            
+            toast.className = `toast ${bgColor} backdrop-blur-sm text-white px-6 py-3 rounded-lg shadow-lg`;
+            toast.textContent = message;
+            
+            document.getElementById('toastContainer').appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                toast.style.transition = 'all 0.3s';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        initCollegesFromHTML();
+    </script>
+</body>
+</html>

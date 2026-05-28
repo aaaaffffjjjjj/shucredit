@@ -154,11 +154,14 @@ class Module(db.Model):
 class Course(db.Model):
     __tablename__ = 'course'
     id = db.Column(db.Integer, primary_key=True)
-    course_code = db.Column(db.String(50), unique=True, index=True)
+    course_code = db.Column(db.String(50), index=True)
     name = db.Column(db.String(150))
     credit = db.Column(db.Float, default=0)
     module_id = db.Column(db.Integer, db.ForeignKey('module.id'), index=True)
     module = db.relationship('Module', backref='courses')
+    __table_args__ = (
+        db.UniqueConstraint('course_code', 'module_id', name='uix_course_code_module'),
+    )
 
 
 class Student(db.Model):
@@ -180,6 +183,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('student.id'), unique=True, nullable=False)
     student = db.relationship('Student', backref='user', uselist=False)
+    is_admin = db.Column(db.Boolean, default=False)
 
 
 class Enrollment(db.Model):
@@ -210,6 +214,18 @@ class Comment(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     user = db.relationship('User', backref='comments')
+
+
+class Announcement(db.Model):
+    __tablename__ = 'announcement'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    user = db.relationship('User', backref='announcements')
 
 
 @login_manager.user_loader
@@ -699,6 +715,15 @@ def build_progress_api_payload(student_id, use_cache=True, college_id=None, majo
                     'color': '#fff',
                 },
             })
+            # 获取模块的课程列表
+            module_courses = Course.query.filter_by(module_id=node['id']).all()
+            courses_list = [{
+                'id': c.id,
+                'course_code': c.course_code,
+                'name': c.name,
+                'credit': c.credit,
+            } for c in module_courses]
+            
             modules_flat.append({
                 'id': node['id'],
                 'name': node['name'],
@@ -708,6 +733,8 @@ def build_progress_api_payload(student_id, use_cache=True, college_id=None, majo
                 'remaining': node['remaining'],
                 'percent': node['percent'],
                 'status': status,
+                'courses': courses_list,
+                'course_count': len(courses_list),
             })
             if parent_id is not None:
                 graph_links.append({
@@ -1035,34 +1062,6 @@ def logout():
 # =========================
 # 路由：学分进度与 PDF
 # =========================
-@app.route('/progress')
-@login_required
-def progress():
-    student = current_user.student
-    courses = (
-        db.session.query(Course)
-        .join(Enrollment)
-        .filter(Enrollment.student_id == student.id)
-        .all()
-    )
-    earned_map = compute_earned_credits(student.id)
-    all_modules_list = Module.query.all()
-    module_tree = build_progress_module_tree(all_modules_list, earned_map)
-    all_met = check_graduation_met(earned_map, all_modules_list)
-    module_options = build_module_options(
-        Module.query.order_by(Module.name).all()
-    )
-    return render_template(
-        'progress.html',
-        student=student,
-        courses=courses,
-        module_tree=module_tree,
-        all_met=all_met,
-        module_options=module_options,
-        user_id=current_user.id,
-    )
-
-
 @app.route('/api/progress_data')
 @login_required
 def api_progress_data():
@@ -1326,96 +1325,6 @@ def api_upload_pdf():
         return jsonify({'error': str(exc)}), 500
 
 
-@app.route('/module/<int:module_id>/submodules')
-@login_required
-def module_submodules(module_id):
-    """显示指定模块下直接子模块的学分完成情况（已含向上汇总）。"""
-    parent = db.session.get(Module, module_id)
-    if not parent:
-        flash('模块不存在', 'danger')
-        return redirect(url_for('progress'))
-    if not parent.children:
-        flash('该模块没有子模块', 'info')
-        return redirect(url_for('progress'))
-
-    earned_map = compute_earned_credits(current_user.student.id)
-    sub_data = module_stats_for_children(parent, earned_map)
-    return render_template(
-        'submodules.html',
-        parent=parent,
-        submodules=sub_data,
-        parent_name=normalize_module_name(parent.name),
-    )
-
-
-@app.route('/upload_pdf', methods=['POST'])
-@login_required
-def upload_pdf():
-    student = current_user.student
-    files = request.files.getlist('file')
-    if not files or files[0].filename == '':
-        flash('请选择至少一个 PDF 文件', 'warning')
-        return redirect(url_for('progress'))
-    try:
-        inserted, unknown_items = process_pdf_upload(student, files)
-        if unknown_items:
-            merge_unknown_to_session(unknown_items)
-        err = safe_commit(redirect_to=url_for('progress'))
-        if err:
-            return err
-    except Exception as exc:
-        db.session.rollback()
-        flash(f'上传处理失败：{exc}', 'danger')
-        return redirect(url_for('progress'))
-
-    msg = f'成功添加 {inserted} 门课程'
-    if unknown_items:
-        msg += f'，{len(unknown_items)} 个编号待在「待处理课程」中补全'
-    flash(msg, 'info')
-    return redirect(url_for('progress'))
-
-
-@app.route('/delete_course', methods=['POST'])
-@login_required
-def delete_course():
-    course_code = request.form.get('course_code', '').strip()
-    try:
-        course = Course.query.filter_by(course_code=course_code).first()
-        if course:
-            Enrollment.query.filter_by(
-                student_id=current_user.student.id, course_id=course.id
-            ).delete()
-            err = safe_commit(
-                f'已删除课程 {course.name}', redirect_to=url_for('progress')
-            )
-            if err:
-                return err
-        else:
-            flash('课程不存在', 'warning')
-    except Exception as exc:
-        db.session.rollback()
-        flash(f'删除失败：{exc}', 'danger')
-    return redirect(url_for('progress'))
-
-
-@app.route('/reset_courses', methods=['POST'])
-@login_required
-def reset_courses():
-    try:
-        Enrollment.query.filter_by(
-            student_id=current_user.student.id
-        ).delete()
-        err = safe_commit(
-            '所有已修课程已清空', redirect_to=url_for('progress')
-        )
-        if err:
-            return err
-    except Exception as exc:
-        db.session.rollback()
-        flash(f'清空失败：{exc}', 'danger')
-    return redirect(url_for('progress'))
-
-
 # =========================
 # 路由：管理员
 # =========================
@@ -1637,79 +1546,6 @@ def admin_modules():
     )
     module_tree = build_admin_module_tree(all_modules, course_counts)
     return render_template('admin_modules.html', module_tree=module_tree)
-
-
-FORUM_PER_PAGE = 10
-
-
-@app.route('/forum')
-@login_required
-def forum_index():
-    page = request.args.get('page', 1, type=int)
-    pagination = (
-        Post.query.order_by(Post.created_at.desc())
-        .paginate(page=page, per_page=FORUM_PER_PAGE, error_out=False)
-    )
-    return render_template(
-        'forum_index.html',
-        posts=pagination.items,
-        pagination=pagination,
-    )
-
-
-@app.route('/forum/new', methods=['GET', 'POST'])
-@login_required
-def forum_new_post():
-    if request.method == 'POST':
-        title = request.form.get('title', '').strip()
-        body = request.form.get('body', '').strip()
-        if not title or not body:
-            flash('标题和内容不能为空', 'warning')
-            return redirect(url_for('forum_new_post'))
-        try:
-            post = Post(title=title, body=body, user_id=current_user.id)
-            db.session.add(post)
-            db.session.flush()
-            err = safe_commit('发帖成功', redirect_to=url_for('forum_new_post'))
-            if err:
-                return err
-            return redirect(url_for('forum_post', post_id=post.id))
-        except Exception as exc:
-            db.session.rollback()
-            flash(f'发帖失败：{exc}', 'danger')
-    return render_template('forum_new.html')
-
-
-@app.route('/forum/<int:post_id>', methods=['GET', 'POST'])
-@login_required
-def forum_post(post_id):
-    post = db.session.get(Post, post_id)
-    if not post:
-        flash('帖子不存在', 'danger')
-        return redirect(url_for('forum_index'))
-    if request.method == 'POST':
-        body = request.form.get('body', '').strip()
-        if not body:
-            flash('回复内容不能为空', 'warning')
-        else:
-            try:
-                db.session.add(Comment(
-                    body=body, post_id=post.id, user_id=current_user.id,
-                ))
-                err = safe_commit('回复成功', redirect_to=url_for(
-                    'forum_post', post_id=post_id,
-                ))
-                if err:
-                    return err
-            except Exception as exc:
-                db.session.rollback()
-                flash(f'回复失败：{exc}', 'danger')
-    comments = (
-        Comment.query.filter_by(post_id=post.id)
-        .order_by(Comment.created_at.asc())
-        .all()
-    )
-    return render_template('forum_post.html', post=post, comments=comments)
 
 
 # =========================
@@ -1989,6 +1825,753 @@ def api_admin_delete_course(course_id):
     try:
         Enrollment.query.filter_by(course_id=course_id).delete()
         db.session.delete(course)
+        db.session.commit()
+        return jsonify({'ok': True})
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+# ==================== 学院-专业映射表 ====================
+COLLEGE_MAJOR_MAP = {
+    # 通信与信息工程学院
+    '通信与信息工程学院': [
+        '通信工程', '电子信息工程', '电子科学与技术', '信息安全',
+        '通信工程(中外合作)', '电子信息工程(中外合作)'
+    ],
+    # 微电子学院
+    '微电子学院': [
+        '微电子科学与工程', '集成电路设计与集成系统', '微电子科学与工程(中外合作)'
+    ],
+    # 计算机工程与科学学院
+    '计算机工程与科学学院': [
+        '计算机科学与技术', '软件工程', '网络工程', '人工智能',
+        '计算机科学与技术(中外合作)', '数据科学与大数据技术'
+    ],
+    # 机电工程与自动化学院
+    '机电工程与自动化学院': [
+        '机械工程', '机械设计制造及其自动化', '自动化', '测控技术与仪器',
+        '工业工程', '机器人工程', '智能制造工程'
+    ],
+    # 材料科学与工程学院
+    '材料科学与工程学院': [
+        '材料科学与工程', '材料物理', '材料化学', '新能源材料与器件'
+    ],
+    # 环境与化学工程学院
+    '环境与化学工程学院': [
+        '环境工程', '化学工程与工艺', '应用化学', '生物工程', '制药工程'
+    ],
+    # 生命科学学院
+    '生命科学学院': [
+        '生物科学', '生物技术', '生物信息学', '食品科学与工程'
+    ],
+    # 理学院
+    '理学院': [
+        '数学与应用数学', '信息与计算科学', '物理学', '应用物理学',
+        '统计学', '光电信息科学与工程'
+    ],
+    # 外国语学院
+    '外国语学院': [
+        '英语', '日语', '德语', '法语', '翻译'
+    ],
+    # 文学院
+    '文学院': [
+        '汉语言文学', '历史学', '哲学', '新闻学', '广播电视学', '广告学'
+    ],
+    # 法学院
+    '法学院': [
+        '法学', '知识产权'
+    ],
+    # 经济学院
+    '经济学院': [
+        '经济学', '国际经济与贸易', '金融学', '会计学', '工商管理',
+        '市场营销', '信息管理与信息系统', '工程管理'
+    ],
+    # 管理学院
+    '管理学院': [
+        '工商管理', '公共管理', '信息管理与信息系统', '物流管理', '工业工程'
+    ],
+    # 悉尼工商学院
+    '悉尼工商学院': [
+        '国际经济与贸易', '工商管理', '会计学', '金融学', '信息管理与信息系统'
+    ],
+    # 中欧工程技术学院
+    '中欧工程技术学院': [
+        '机械工程', '电气工程及其自动化', '材料科学与工程', '生物工程'
+    ],
+    # 社会学院
+    '社会学院': [
+        '社会学', '社会工作', '公共事业管理'
+    ],
+    # 美术学院
+    '美术学院': [
+        '美术学', '绘画', '雕塑', '视觉传达设计', '环境设计', '产品设计'
+    ],
+    # 音乐学院
+    '音乐学院': [
+        '音乐表演', '音乐学', '作曲与作曲技术理论'
+    ],
+    # 体育学院
+    '体育学院': [
+        '体育教育', '运动训练', '社会体育指导与管理'
+    ],
+    # 影视学院
+    '影视学院': [
+        '戏剧影视文学', '广播电视编导', '表演', '动画', '数字媒体艺术'
+    ],
+    # 新闻传播学院
+    '新闻传播学院': [
+        '新闻学', '广播电视学', '广告学', '网络与新媒体', '传播学'
+    ],
+    # 马克思主义学院
+    '马克思主义学院': [
+        '思想政治教育'
+    ],
+    # 力学与工程科学学院
+    '力学与工程科学学院': [
+        '工程力学', '土木工程', '建筑环境与能源应用工程'
+    ],
+    # 土木工程系
+    '土木工程系': [
+        '土木工程', '建筑环境与能源应用工程', '给排水科学与工程'
+    ],
+    # 电气工程系
+    '电气工程系': [
+        '电气工程及其自动化', '自动化', '智能电网信息工程'
+    ],
+    # 化学系
+    '化学系': [
+        '化学', '应用化学', '材料化学'
+    ],
+    # 物理系
+    '物理系': [
+        '物理学', '应用物理学', '光电信息科学与工程'
+    ],
+    # 数学系
+    '数学系': [
+        '数学与应用数学', '信息与计算科学', '统计学'
+    ],
+    # 工程训练中心
+    '工程训练中心': [
+        '智能制造工程', '工业工程'
+    ]
+}
+
+# 反向映射：专业名称 → 学院名称
+MAJOR_COLLEGE_MAP = {}
+for college, majors in COLLEGE_MAJOR_MAP.items():
+    for major in majors:
+        MAJOR_COLLEGE_MAP[major] = college
+
+# 常见专业名称关键词
+MAJOR_KEYWORDS = [
+    '通信工程', '电子信息工程', '微电子', '计算机', '软件工程',
+    '机械', '自动化', '材料', '环境', '化学', '生物',
+    '数学', '物理', '英语', '日语', '法学', '经济', '金融',
+    '会计', '管理', '土木', '电气', '建筑', '设计', '音乐',
+    '体育', '新闻', '传播', '影视', '美术', '哲学', '历史'
+]
+
+def guess_college_and_major_from_filename(filename):
+    """
+    从PDF文件名智能识别学院和专业
+    
+    Args:
+        filename: PDF文件名
+        
+    Returns:
+        (college_name, major_name): 学院名称和专业名称
+    """
+    # 移除扩展名和常见前缀
+    name = filename.replace('.pdf', '').replace('.PDF', '')
+    name = re.sub(r'^(202[0-9]|培养方案|本科|专业)', '', name)
+    
+    # 查找专业关键词
+    found_major = None
+    for keyword in MAJOR_KEYWORDS:
+        if keyword in name:
+            found_major = keyword
+            break
+    
+    # 如果找到专业关键词，尝试匹配学院
+    if found_major:
+        # 精确匹配
+        for major, college in MAJOR_COLLEGE_MAP.items():
+            if found_major in major:
+                return college, major
+        
+        # 模糊匹配
+        for major, college in MAJOR_COLLEGE_MAP.items():
+            if found_major in major or major in found_major:
+                return college, major
+        
+        return "未知学院", found_major
+    
+    return "未知学院", "未知专业"
+
+
+class SmartPDFParser:
+    """智能PDF解析器 - 基于pdf_app的核心算法优化"""
+    
+    def __init__(self):
+        self.modules = []
+        self.courses = []
+        self.full_text = ""
+        self.college_name = ""
+        self.major_name = ""
+        self.filename = ""
+    
+    def parse(self, file_stream, filename=""):
+        """解析PDF"""
+        self.filename = filename
+        
+        if filename:
+            college_from_file, major_from_file = guess_college_and_major_from_filename(filename)
+            self.college_name = college_from_file
+            self.major_name = major_from_file
+        
+        with pdfplumber.open(file_stream) as pdf:
+            self.full_text = "\n".join([page.extract_text() or "" for page in pdf.pages])
+        
+        self._extract_college_and_major()
+        self._parse_modules_from_pdf()
+        self._parse_courses_from_pdf()
+        
+        return True
+    
+    def _extract_college_and_major(self):
+        """从PDF内容提取学院和专业名称"""
+        patterns = [
+            r'(\S+学院)\s+(\S+专业)',
+            r'(\S+专业)\s+培养方案',
+            r'(\S+学院)',
+            r'(\S+专业)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, self.full_text)
+            if match:
+                if len(match.groups()) >= 2:
+                    pdf_college = match.group(1)
+                    pdf_major = match.group(2)
+                else:
+                    pdf_major = match.group(1)
+                    pdf_college = None
+                
+                if pdf_college and pdf_college != "未知学院":
+                    self.college_name = pdf_college
+                if pdf_major and pdf_major != "未知专业":
+                    self.major_name = pdf_major
+                break
+    
+    def _parse_modules_from_pdf(self):
+        """从PDF解析模块 - 支持三种格式：
+        1. 主模块：1. 公共基础课程（数字+英文句点）
+        2. 子模块：(1) 思政类 18.5 学分（中文括号）
+        3. 孙模块：1) 思政必修课（数字+英文右括号）
+        """
+        # 主模块格式：1. 公共基础课程 [学分]
+        pattern1 = r'(\d+)\.\s*([^\n]+?)(?:\s*(\d+(?:\.\d+)?)\s*学分)?'
+        
+        # 子模块格式：(1) 思政类 18.5 学分（中文括号）
+        pattern2 = r'（(\d+)）\s*([^\n]+?)\s*(\d+(?:\.\d+)?)\s*学分'
+        
+        # 孙模块格式：1) 思政必修课（数字+英文右括号）
+        pattern3 = r'(\d+)\)\s*([^\n]+?)(?:\s*(\d+(?:\.\d+)?)\s*学分)?'
+        
+        # 普通格式：模块名称（XX学分）
+        pattern4 = r'([^\n]+?)\s*（(\d+(?:\.\d+)?)学分）'
+        
+        # 简单格式：模块名称 XX学分
+        pattern5 = r'([^\n]+?)\s*(\d+(?:\.\d+)?)\s*学分'
+        
+        modules = []
+        
+        for pattern in [pattern1, pattern2, pattern3, pattern4, pattern5]:
+            matches = re.findall(pattern, self.full_text)
+            for match in matches:
+                # 过滤掉太短的模块名称（可能是误匹配）
+                if len(match) >= 2 and len(match[1].strip()) >= 2:
+                    name = match[1].strip()
+                    credits = float(match[2]) if len(match) > 2 and match[2] else 0.0
+                    order = int(match[0]) if match[0].isdigit() else len(modules) + 1
+                    
+                    modules.append({
+                        'order': order,
+                        'name': name,
+                        'credits': credits
+                    })
+        
+        seen = set()
+        unique_modules = []
+        for mod in modules:
+            key = (mod['name'], mod['credits'])
+            if key not in seen:
+                seen.add(key)
+                unique_modules.append(mod)
+        
+        unique_modules.sort(key=lambda x: x['order'])
+        self._map_to_standard_structure(unique_modules)
+    
+    def _map_to_standard_structure(self, parsed_modules):
+        """将解析的模块映射到标准结构"""
+        standard_names = [
+            '公共基础课程', '通识课程', '专业基础课程', 
+            '专业必修课程', '专业选修课程', '个性化教育课程', '专业方向模块'
+        ]
+        
+        std_modules = []
+        
+        for name in standard_names:
+            found = False
+            for parsed in parsed_modules:
+                if name in parsed['name'] or parsed['name'] in name:
+                    std_modules.append({
+                        'name': name,
+                        'credits': parsed['credits'],
+                        'parent_name': None,
+                        'source': 'pdf'
+                    })
+                    found = True
+                    break
+            
+            if not found:
+                default_credits = {
+                    '公共基础课程': 67.5,
+                    '通识课程': 8.0,
+                    '专业基础课程': 52.0,
+                    '专业必修课程': 18.5,
+                    '专业选修课程': 4.0,
+                    '个性化教育课程': 10.0,
+                    '专业方向模块': 10.0
+                }
+                std_modules.append({
+                    'name': name,
+                    'credits': default_credits.get(name, 10.0),
+                    'parent_name': None,
+                    'source': 'default'
+                })
+        
+        sub_modules = [
+            ('思政类', 18.5, '公共基础课程'),
+            ('军体类', 9.0, '公共基础课程'),
+            ('大学英语', 8.0, '公共基础课程'),
+            ('人工智能类', 5.0, '公共基础课程'),
+            ('国家安全教育', 1.0, '公共基础课程'),
+            ('自然科学类', 26.0, '公共基础课程'),
+            ('核心通识课', 2.0, '通识课程'),
+            ('跨类通识课', 2.0, '通识课程'),
+            ('其他通识课', 4.0, '通识课程'),
+            ('专业选修子模块1', 2.0, '专业选修课程'),
+            ('专业选修子模块2', 2.0, '专业选修课程'),
+            ('综合工程实践能力培养模块', 10.0, '个性化教育课程'),
+        ]
+        
+        direction_credits = self._parse_direction_credits()
+        if direction_credits:
+            sub_modules.extend(direction_credits)
+        else:
+            sub_modules.extend([
+                ('方向1', 4.0, '专业方向模块'),
+                ('方向2', 4.0, '专业方向模块'),
+                ('方向3', 2.0, '专业方向模块'),
+            ])
+        
+        for name, credits, parent_name in sub_modules:
+            std_modules.append({
+                'name': name,
+                'credits': credits,
+                'parent_name': parent_name,
+                'source': 'default'
+            })
+        
+        self.modules = std_modules
+    
+    def _parse_direction_credits(self):
+        """尝试从PDF解析专业方向"""
+        direction_section = re.search(r'专业方向.*?(?=\n\n|\Z)', self.full_text, re.DOTALL)
+        if direction_section:
+            text = direction_section.group()
+            pattern = r'(\S+方向)\s*(\d+(?:\.\d+)?)学分'
+            matches = re.findall(pattern, text)
+            if matches:
+                return [(m[0], float(m[1]), '专业方向模块') for m in matches]
+        return None
+    
+    def _parse_courses_from_pdf(self):
+        """从PDF解析课程"""
+        courses = []
+        lines = self.full_text.split('\n')
+        
+        for i, line in enumerate(lines):
+            code_match = re.match(r'([A-Z]{3}\d{5,7})', line.strip())
+            if code_match:
+                code = code_match.group(1)
+                name = ""
+                credit = 2.0
+                
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    next_line = lines[j].strip()
+                    if next_line and not re.match(r'[A-Z]{3}\d+', next_line):
+                        credit_match = re.search(r'(\d+(?:\.\d+)?)\s*学分', next_line)
+                        if credit_match:
+                            credit = float(credit_match.group(1))
+                            name = next_line[:next_line.find(credit_match.group(0))].strip()
+                        else:
+                            name = next_line
+                        break
+                
+                if name:
+                    courses.append({
+                        'code': code,
+                        'name': name,
+                        'credit': credit,
+                        'module_name': '专业基础课程'
+                    })
+        
+        self.courses = courses
+    
+    def get_result(self):
+        """获取解析结果"""
+        return {
+            'modules': self.modules,
+            'courses': self.courses,
+            'college_name': self.college_name,
+            'major_name': self.major_name,
+            'filename': self.filename
+        }
+
+
+def parse_curriculum_pdf(file_stream, filename=""):
+    """智能PDF解析器入口"""
+    try:
+        parser = SmartPDFParser()
+        parser.parse(file_stream, filename)
+        return parser.get_result()
+    except Exception as e:
+        print(f"PDF解析错误: {str(e)}")
+        return {'modules': [], 'courses': [], 'error': str(e)}
+
+
+@app.route('/admin/import_curriculum', methods=['GET', 'POST'])
+@admin_required
+def import_curriculum():
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'parse':
+            if 'file' not in request.files:
+                return jsonify({'error': '未上传文件'}), 400
+            
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({'error': '未选择文件'}), 400
+            
+            if not file.filename.lower().endswith('.pdf'):
+                return jsonify({'error': '仅支持 PDF 文件'}), 400
+            
+            try:
+                result = parse_curriculum_pdf(file.stream, file.filename)
+                if 'error' in result:
+                    return jsonify({'error': result['error']}), 400
+                return jsonify(result)
+            except Exception as e:
+                return jsonify({'error': f'解析失败: {str(e)}'}), 500
+        
+        elif action == 'import':
+            data = request.get_json()
+            major_id = data.get('major_id')
+            college_id = data.get('college_id')
+            modules_data = data.get('modules', [])
+            courses_data = data.get('courses', [])
+            conflict_strategy = data.get('conflict_strategy', 'skip')
+            
+            if not major_id or not college_id:
+                return jsonify({'error': '未选择专业'}), 400
+            
+            if not modules_data and not courses_data:
+                return jsonify({'error': '无数据可导入'}), 400
+            
+            try:
+                db.session.begin()
+                
+                module_name_to_id = {}
+                imported_modules = 0
+                imported_courses = 0
+                skipped_modules = 0
+                skipped_courses = 0
+                
+                for mod in modules_data:
+                    existing = Module.query.filter_by(
+                        name=mod['name'],
+                        major_id=major_id
+                    ).first()
+                    
+                    if existing:
+                        if conflict_strategy == 'skip':
+                            skipped_modules += 1
+                            module_name_to_id[mod['name']] = existing.id
+                            continue
+                        elif conflict_strategy == 'overwrite':
+                            existing.required_credits = mod['credits']
+                            db.session.flush()
+                            module_name_to_id[mod['name']] = existing.id
+                            continue
+                        else:
+                            skipped_modules += 1
+                            continue
+                    
+                    parent_id = None
+                    if mod.get('parent_name') and mod['parent_name'] in module_name_to_id:
+                        parent_id = module_name_to_id[mod['parent_name']]
+                    
+                    new_module = Module(
+                        name=mod['name'],
+                        required_credits=mod['credits'],
+                        parent_id=parent_id,
+                        college_id=college_id,
+                        major_id=major_id
+                    )
+                    db.session.add(new_module)
+                    db.session.flush()
+                    module_name_to_id[mod['name']] = new_module.id
+                    imported_modules += 1
+                
+                for course in courses_data:
+                    module_name = course.get('module_name')
+                    if not module_name or module_name not in module_name_to_id:
+                        skipped_courses += 1
+                        continue
+                    
+                    existing = Course.query.filter_by(
+                        course_code=course['code']
+                    ).first()
+                    
+                    if existing:
+                        if conflict_strategy == 'skip':
+                            skipped_courses += 1
+                            continue
+                        elif conflict_strategy == 'overwrite':
+                            existing.name = course['name']
+                            existing.credit = course['credit']
+                            existing.module_id = module_name_to_id[module_name]
+                            imported_courses += 1
+                            continue
+                        else:
+                            skipped_courses += 1
+                            continue
+                    
+                    new_course = Course(
+                        course_code=course['code'],
+                        name=course['name'],
+                        credit=course['credit'],
+                        module_id=module_name_to_id[module_name]
+                    )
+                    db.session.add(new_course)
+                    imported_courses += 1
+                
+                db.session.commit()
+                
+                return jsonify({
+                    'ok': True,
+                    'imported_modules': imported_modules,
+                    'imported_courses': imported_courses,
+                    'skipped_modules': skipped_modules,
+                    'skipped_courses': skipped_courses
+                })
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({'error': f'导入失败: {str(e)}'}), 500
+    
+    # GET 请求：渲染页面并传递学院数据
+    colleges = College.query.order_by(College.id).all()
+    colleges_data = [{'id': c.id, 'name': c.name, 'code': c.code} for c in colleges]
+    return render_template('admin_import_curriculum.html', colleges=colleges_data)
+
+
+# =========================
+# 公告栏 API
+# =========================
+@app.route('/api/announcements', methods=['GET'])
+@login_required
+def api_get_announcements():
+    """获取公告列表（所有用户可见，只返回活跃公告）"""
+    active_only = request.args.get('active_only', 'true').lower() == 'true'
+    
+    query = Announcement.query
+    if active_only:
+        query = query.filter_by(is_active=True)
+    
+    announcements = query.order_by(Announcement.created_at.desc()).all()
+    
+    result = []
+    for ann in announcements:
+        result.append({
+            'id': ann.id,
+            'title': ann.title,
+            'content': ann.content,
+            'is_active': ann.is_active,
+            'created_at': ann.created_at.isoformat() if ann.created_at else None,
+            'updated_at': ann.updated_at.isoformat() if ann.updated_at else None,
+            'username': ann.user.username if ann.user else '',
+        })
+    
+    return jsonify({'announcements': result})
+
+
+@app.route('/api/announcements/latest', methods=['GET'])
+@login_required
+def api_get_latest_announcement():
+    """获取最新的活跃公告"""
+    ann = Announcement.query.filter_by(is_active=True).order_by(Announcement.created_at.desc()).first()
+    
+    if not ann:
+        return jsonify({'announcement': None})
+    
+    return jsonify({
+        'announcement': {
+            'id': ann.id,
+            'title': ann.title,
+            'content': ann.content,
+            'is_active': ann.is_active,
+            'created_at': ann.created_at.isoformat() if ann.created_at else None,
+            'updated_at': ann.updated_at.isoformat() if ann.updated_at else None,
+            'username': ann.user.username if ann.user else '',
+        }
+    })
+
+
+@app.route('/api/admin/announcements', methods=['GET'])
+@login_required
+def api_admin_get_announcements():
+    """管理员获取所有公告（包括非活跃）"""
+    err = _admin_api_check()
+    if err:
+        return err
+    
+    announcements = Announcement.query.order_by(Announcement.created_at.desc()).all()
+    
+    result = []
+    for ann in announcements:
+        result.append({
+            'id': ann.id,
+            'title': ann.title,
+            'content': ann.content,
+            'is_active': ann.is_active,
+            'created_at': ann.created_at.isoformat() if ann.created_at else None,
+            'updated_at': ann.updated_at.isoformat() if ann.updated_at else None,
+            'username': ann.user.username if ann.user else '',
+        })
+    
+    return jsonify({'announcements': result})
+
+
+@app.route('/api/admin/announcements', methods=['POST'])
+@login_required
+def api_admin_create_announcement():
+    """管理员创建公告"""
+    err = _admin_api_check()
+    if err:
+        return err
+    
+    data = request.get_json(silent=True) or {}
+    title = (data.get('title') or '').strip()
+    content = (data.get('content') or '').strip()
+    
+    if not title:
+        return jsonify({'error': '公告标题不能为空'}), 400
+    if not content:
+        return jsonify({'error': '公告内容不能为空'}), 400
+    
+    try:
+        ann = Announcement(
+            title=title,
+            content=content,
+            is_active=True,
+            user_id=current_user.id
+        )
+        db.session.add(ann)
+        db.session.commit()
+        
+        return jsonify({
+            'ok': True,
+            'announcement': {
+                'id': ann.id,
+                'title': ann.title,
+                'content': ann.content,
+                'is_active': ann.is_active,
+                'created_at': ann.created_at.isoformat() if ann.created_at else None,
+                'updated_at': ann.updated_at.isoformat() if ann.updated_at else None,
+            }
+        }), 201
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/admin/announcements/<int:ann_id>', methods=['PUT'])
+@login_required
+def api_admin_update_announcement(ann_id):
+    """管理员更新公告"""
+    err = _admin_api_check()
+    if err:
+        return err
+    
+    ann = db.session.get(Announcement, ann_id)
+    if not ann:
+        return jsonify({'error': '公告不存在'}), 404
+    
+    data = request.get_json(silent=True) or {}
+    
+    try:
+        if 'title' in data:
+            title = data['title'].strip()
+            if not title:
+                return jsonify({'error': '公告标题不能为空'}), 400
+            ann.title = title
+        
+        if 'content' in data:
+            content = data['content'].strip()
+            if not content:
+                return jsonify({'error': '公告内容不能为空'}), 400
+            ann.content = content
+        
+        if 'is_active' in data:
+            ann.is_active = bool(data['is_active'])
+        
+        db.session.commit()
+        
+        return jsonify({
+            'ok': True,
+            'announcement': {
+                'id': ann.id,
+                'title': ann.title,
+                'content': ann.content,
+                'is_active': ann.is_active,
+                'created_at': ann.created_at.isoformat() if ann.created_at else None,
+                'updated_at': ann.updated_at.isoformat() if ann.updated_at else None,
+            }
+        })
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/admin/announcements/<int:ann_id>', methods=['DELETE'])
+@login_required
+def api_admin_delete_announcement(ann_id):
+    """管理员删除公告"""
+    err = _admin_api_check()
+    if err:
+        return err
+    
+    ann = db.session.get(Announcement, ann_id)
+    if not ann:
+        return jsonify({'error': '公告不存在'}), 404
+    
+    try:
+        db.session.delete(ann)
         db.session.commit()
         return jsonify({'ok': True})
     except Exception as exc:

@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { LogOut, Settings } from 'lucide-react'
+import { LogOut, Settings, Printer } from 'lucide-react'
 import {
   transformRootModules,
   toPlanetModules,
@@ -16,10 +16,12 @@ import TopNavbar from '@/components/top-navbar'
 import SidebarModules from '@/components/sidebar-modules'
 import PlanetDetailPanel from '@/components/planet-detail-panel'
 import ToolPanel from '@/components/tool-panel'
+import { usePrintReport } from '@/components/print-report'
 import UploadPdf from '@/components/upload-pdf'
 import { CollegeSelector } from '@/components/college-selector'
 import { MajorSelector } from '@/components/major-selector'
 import { AdminPanel } from '@/components/admin-panel'
+import { AnnouncementPanel } from '@/components/announcement-panel'
 import { apiFetch } from '@/lib/api'
 import { useRouter } from 'next/navigation'
 
@@ -69,6 +71,11 @@ export default function DashboardPage() {
   const [majorId, setMajorId] = useState<number | null>(null)
   const [isAdminMode, setIsAdminMode] = useState(false)
   const [adminPanelOpen, setAdminPanelOpen] = useState(false)
+  const [studentName, setStudentName] = useState<string | undefined>()
+  const [majorName, setMajorName] = useState<string | undefined>()
+  const [username, setUsername] = useState<string | undefined>()
+
+  const { printReport } = usePrintReport()
 
   const planets = useMemo(() => toPlanetModules(modules), [modules])
 
@@ -122,6 +129,16 @@ export default function DashboardPage() {
   const handleMajorChange = useCallback(
     (newMajorId: number) => {
       setMajorId(newMajorId)
+      if (newMajorId) {
+        apiFetch(`/api/majors/${newMajorId}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.name) {
+              setMajorName(data.name)
+            }
+          })
+          .catch(() => {})
+      }
       loadProgress({ majorId: newMajorId })
     },
     [loadProgress],
@@ -137,6 +154,12 @@ export default function DashboardPage() {
         const data = await res.json()
         if (data.college?.id) {
           setCollegeId(data.college.id)
+        }
+        if (data.username) {
+          setUsername(data.username)
+        }
+        if (data.name) {
+          setStudentName(data.name)
         }
       })
       .catch(() => router.replace('/login'))
@@ -176,6 +199,16 @@ export default function DashboardPage() {
       /* ignore */
     }
     router.push('/login')
+  }
+
+  const handlePrint = () => {
+    printReport({
+      studentName,
+      majorName,
+      username,
+      modules: allModules,
+      sun
+    })
   }
 
   if (!authChecked) {
@@ -226,6 +259,14 @@ export default function DashboardPage() {
         >
           <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </button>
+        <button
+          type="button"
+          onClick={handlePrint}
+          className="glass-card !rounded-full p-2 sm:p-2.5 text-white/70 hover:text-white transition-colors no-print"
+          title="导出PDF报告"
+        >
+          <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </button>
       </header>
 
       <main className="relative w-full h-screen min-h-[600px]">
@@ -249,6 +290,10 @@ export default function DashboardPage() {
             <UploadPdf onSuccess={() => setRefreshKey((k) => k + 1)} />
           }
         />
+
+        <div className="fixed bottom-4 left-4 w-72 z-40">
+          <AnnouncementPanel />
+        </div>
 
         {progressError && (
           <p className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 text-red-400 text-sm glass-card px-4 py-2">

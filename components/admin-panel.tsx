@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, X, FolderTree, BookOpen, ChevronRight, ChevronDown, Loader2, CheckCircle2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, FolderTree, BookOpen, ChevronRight, ChevronDown, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 
@@ -23,7 +23,17 @@ interface AdminCourse {
   module_path: string
 }
 
-type TabKey = 'modules' | 'courses'
+interface AdminAnnouncement {
+  id: number
+  title: string
+  content: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  username: string
+}
+
+type TabKey = 'modules' | 'courses' | 'announcements'
 
 interface AdminPanelProps {
   open: boolean
@@ -245,6 +255,108 @@ function ModuleFormModal({
   )
 }
 
+function AnnouncementFormModal({
+  open,
+  onClose,
+  onSave,
+  initial,
+  saving,
+}: {
+  open: boolean
+  onClose: () => void
+  onSave: (data: AnnouncementFormData) => void
+  initial?: AnnouncementFormData & { id?: number }
+  saving?: boolean
+}) {
+  const [title, setTitle] = useState(initial?.title || '')
+  const [content, setContent] = useState(initial?.content || '')
+  const [isActive, setIsActive] = useState(initial?.is_active ?? true)
+
+  useEffect(() => {
+    if (open) {
+      setTitle(initial?.title || '')
+      setContent(initial?.content || '')
+      setIsActive(initial?.is_active ?? true)
+    }
+  }, [open, initial])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-zinc-900 border border-white/15 rounded-2xl p-6 w-full max-w-lg shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">
+            {initial?.id ? '编辑公告' : '发布公告'}
+          </h3>
+          <button onClick={onClose} className="text-white/40 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-white/60 mb-1">公告标题</label>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-white/30"
+              placeholder="请输入公告标题"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-white/60 mb-1">公告内容</label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-white/30 min-h-[120px] resize-none"
+              placeholder="请输入公告内容"
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <label className="block text-sm text-white/60">是否发布</label>
+            <button
+              onClick={() => setIsActive(!isActive)}
+              className={`w-10 h-5 rounded-full transition-colors ${
+                isActive ? 'bg-green-500' : 'bg-white/20'
+              }`}
+            >
+              <div
+                className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                  isActive ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => {
+              if (!title.trim() || !content.trim() || saving) return
+              onSave({ title: title.trim(), content: content.trim(), is_active: isActive })
+            }}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/20 text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {saving ? '保存中…' : '保存'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function CourseFormModal({
   open,
   onClose,
@@ -360,10 +472,17 @@ function CourseFormModal({
   )
 }
 
+interface AnnouncementFormData {
+  title: string
+  content: string
+  is_active: boolean
+}
+
 export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('modules')
   const [modules, setModules] = useState<AdminModule[]>([])
   const [courses, setCourses] = useState<AdminCourse[]>([])
+  const [announcements, setAnnouncements] = useState<AdminAnnouncement[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
@@ -374,6 +493,9 @@ export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
 
   const [courseFormOpen, setCourseFormOpen] = useState(false)
   const [editingCourse, setEditingCourse] = useState<(CourseFormData & { id?: number }) | undefined>()
+
+  const [announcementFormOpen, setAnnouncementFormOpen] = useState(false)
+  const [editingAnnouncement, setEditingAnnouncement] = useState<(AnnouncementFormData & { id?: number }) | undefined>()
 
   const loadModules = useCallback(async () => {
     try {
@@ -407,12 +529,28 @@ export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
     }
   }, [])
 
+  const loadAnnouncements = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/admin/announcements')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: '请求失败' }))
+        setError(err.error || `HTTP ${res.status}`)
+        setAnnouncements([])
+        return
+      }
+      const data = await res.json()
+      setAnnouncements(data.announcements || [])
+    } catch (e) {
+      setError('加载公告失败')
+    }
+  }, [])
+
   useEffect(() => {
     if (!open) return
     setLoading(true)
     setError(null)
-    Promise.all([loadModules(), loadCourses()]).finally(() => setLoading(false))
-  }, [open, loadModules, loadCourses])
+    Promise.all([loadModules(), loadCourses(), loadAnnouncements()]).finally(() => setLoading(false))
+  }, [open, loadModules, loadCourses, loadAnnouncements])
 
   const handleSaveModule = async (data: ModuleFormData) => {
     setSaving(true)
@@ -493,6 +631,66 @@ export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
     }
   }
 
+  const handleSaveAnnouncement = async (data: AnnouncementFormData) => {
+    setSaving(true)
+    setError(null)
+    try {
+      if (editingAnnouncement?.id) {
+        await apiFetch(`/api/admin/announcements/${editingAnnouncement.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        })
+        toast.success('公告更新成功')
+      } else {
+        await apiFetch('/api/admin/announcements', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        })
+        toast.success('公告发布成功')
+      }
+      await loadAnnouncements()
+      setAnnouncementFormOpen(false)
+      setEditingAnnouncement(undefined)
+    } catch (e) {
+      setError('保存公告失败')
+      toast.error('保存公告失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteAnnouncement = async (ann: AdminAnnouncement) => {
+    if (!confirm(`确定删除公告「${ann.title}」吗？`)) return
+    setDeletingId(ann.id)
+    try {
+      const res = await apiFetch(`/api/admin/announcements/${ann.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error(body.error || '删除失败')
+        return
+      }
+      toast.success(`公告「${ann.title}」已删除`)
+      await loadAnnouncements()
+    } catch (e) {
+      setError('删除公告失败')
+      toast.error('删除公告失败')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return ''
+    const date = new Date(dateStr)
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
   if (!open) return null
 
   const moduleTree = buildModuleTree(modules)
@@ -536,6 +734,25 @@ export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
           >
             <BookOpen className="w-4 h-4" />
             课程管理
+          </button>
+          <button
+            onClick={() => setActiveTab('announcements')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm border-b-2 transition-colors ${
+              activeTab === 'announcements'
+                ? 'border-white text-white'
+                : 'border-transparent text-white/40 hover:text-white/70'
+            }`}
+          >
+            <AlertCircle className="w-4 h-4" />
+            公告管理
+          </button>
+          <button
+            onClick={() => window.open('http://localhost:5000/admin/import_curriculum', '_blank')}
+            className="flex items-center gap-2 px-4 py-3 text-sm border-b-2 border-transparent text-white/40 hover:text-white/70 transition-colors ml-auto"
+            title="PDF批量导入"
+          >
+            <Plus className="w-4 h-4" />
+            PDF导入
           </button>
         </div>
 
@@ -657,6 +874,83 @@ export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
                 </table>
               </div>
             </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm text-white/50">共 {announcements.length} 条公告</h3>
+                <button
+                  onClick={() => {
+                    setEditingAnnouncement(undefined)
+                    setAnnouncementFormOpen(true)
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  发布公告
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-white/10 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left px-4 py-3 text-white/40 font-medium">标题</th>
+                      <th className="text-left px-4 py-3 text-white/40 font-medium">状态</th>
+                      <th className="text-left px-4 py-3 text-white/40 font-medium">发布时间</th>
+                      <th className="text-left px-4 py-3 text-white/40 font-medium">发布者</th>
+                      <th className="text-right px-4 py-3 text-white/40 font-medium">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {announcements.map((ann) => (
+                      <tr key={ann.id} className="border-b border-white/5 hover:bg-white/[0.02]">
+                        <td className="px-4 py-3 text-white/80 max-w-[250px] truncate">{ann.title}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 text-xs rounded ${
+                            ann.is_active 
+                              ? 'bg-green-500/20 text-green-400' 
+                              : 'bg-gray-500/20 text-gray-400'
+                          }`}>
+                            {ann.is_active ? '已发布' : '已隐藏'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-white/50 text-xs">{formatDate(ann.created_at)}</td>
+                        <td className="px-4 py-3 text-white/50 text-xs">{ann.username}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => {
+                              setEditingAnnouncement({
+                                id: ann.id,
+                                title: ann.title,
+                                content: ann.content,
+                                is_active: ann.is_active,
+                              })
+                              setAnnouncementFormOpen(true)
+                            }}
+                            className="p-1.5 rounded text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                            title="编辑"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAnnouncement(ann)}
+                            className="p-1.5 rounded text-white/40 hover:text-red-400 hover:bg-white/10 transition-colors"
+                            title="删除"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {announcements.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="text-center text-white/30 text-sm py-12">暂无公告</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -676,6 +970,14 @@ export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
         onSave={handleSaveCourse}
         initial={editingCourse}
         modules={modules}
+        saving={saving}
+      />
+
+      <AnnouncementFormModal
+        open={announcementFormOpen}
+        onClose={() => setAnnouncementFormOpen(false)}
+        onSave={handleSaveAnnouncement}
+        initial={editingAnnouncement}
         saving={saving}
       />
     </>

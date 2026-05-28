@@ -339,3 +339,95 @@ input[type="range"]::-moz-range-thumb {
 ::selection {
   background: rgba(250, 250, 250, 0.15);
 }
+
+/* Print report container - hidden by default */
+.print-report-container {
+  display: none !important;
+}
+
+/* Print styles - hide non-print content and show print report */
+@media print {
+  /* Hide everything by default */
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide elements with no-print class */
+  .no-print,
+  header:not(#print-report *),
+  .fixed,
+  .relative,
+  nav,
+  aside,
+  button,
+  canvas,
+  video {
+    display: none !important;
+  }
+
+  /* Show print report */
+  .print-report-container,
+  #print-report {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+    margin: 0 !important;
+    padding: 20px !important;
+  }
+
+  /* Ensure the main container doesn't interfere */
+  .min-h-screen,
+  .relative,
+  main {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* Remove all backgrounds and effects */
+  * {
+    background: white !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Print-specific table styles */
+  #print-report table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  #print-report th,
+  #print-report td {
+    border: 1px solid #d1d5db;
+    padding: 6px 8px;
+  }
+
+  #print-report th {
+    background: #f3f4f6 !important;
+    font-weight: 600;
+  }
+
+  /* Avoid page breaks inside module rows */
+  #print-report tr {
+    page-break-inside: avoid;
+  }
+
+  /* Ensure progress bars print */
+  #print-report div[style*="width: 80px"] {
+    border: 1px solid #e5e7eb !important;
+  }
+
+  /* Page setup for A4 */
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+}
