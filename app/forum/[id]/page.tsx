@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { 
   ArrowLeft, 
   Clock, 
@@ -9,7 +10,8 @@ import {
   Send,
   Heart,
   Share2,
-  Bookmark
+  Bookmark,
+  AlertCircle,
 } from 'lucide-react'
 import { MathBackground } from '@/components/math-background'
 
@@ -61,10 +63,14 @@ const mockReplies = [
 ]
 
 export default function PostDetailPage() {
+  const params = useParams()
+  const postId = params.id as string
+  const post = postId === 'not-found' ? null : mockPostDetail
+
   const [replyContent, setReplyContent] = useState('')
   const [isLiked, setIsLiked] = useState(false)
   const [isBookmarked, setIsBookmarked] = useState(false)
-  const [likes, setLikes] = useState(mockPostDetail.likes)
+  const [likes, setLikes] = useState(post?.likes ?? 0)
 
   const handleSubmitReply = (e: React.FormEvent) => {
     e.preventDefault()
@@ -78,9 +84,10 @@ export default function PostDetailPage() {
   }
 
   const handleShare = async () => {
+    if (!post) return
     if (navigator.share) {
       await navigator.share({
-        title: mockPostDetail.title,
+        title: post.title,
         url: window.location.href,
       })
     } else {
@@ -107,23 +114,38 @@ export default function PostDetailPage() {
 
       {/* Content */}
       <main className="relative z-10 max-w-3xl mx-auto px-6 py-8">
+        {!post ? (
+          <div className="py-20 text-center">
+            <AlertCircle className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+            <p className="text-base text-muted-foreground mb-1">帖子不存在</p>
+            <p className="text-xs text-muted-foreground/60 mb-6">该帖子可能已被删除，或链接有误</p>
+            <Link
+              href="/forum"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-foreground/10 hover:bg-foreground/15 text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              返回论坛
+            </Link>
+          </div>
+        ) : (
+          <>
         {/* Post */}
         <article className="mb-12">
           <div className="mb-6">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
-              <span>{mockPostDetail.category}</span>
+              <span>{post.category}</span>
               <span>·</span>
-              <span>{mockPostDetail.author}</span>
+              <span>{post.author}</span>
               <span>·</span>
-              <span>{mockPostDetail.createdAt}</span>
+              <span>{post.createdAt}</span>
             </div>
             <h1 className="text-2xl font-medium mb-6">
-              {mockPostDetail.title}
+              {post.title}
             </h1>
           </div>
 
           <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/90 mb-8">
-            {mockPostDetail.content}
+            {post.content}
           </div>
 
           {/* Actions */}
@@ -216,6 +238,8 @@ export default function PostDetailPage() {
             </form>
           </div>
         </section>
+          </>
+        )}
       </main>
     </div>
   )

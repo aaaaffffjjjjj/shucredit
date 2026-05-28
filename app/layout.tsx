@@ -1,3 +1,4 @@
+import { Toaster } from '@/components/ui/sonner'
 import type { Metadata, Viewport } from 'next'
 import { Inter, Playfair_Display } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
@@ -34,6 +35,7 @@ export default function RootLayout({
     <html lang="zh-CN" className="dark bg-background">
       <body className={`${inter.variable} ${playfair.variable} font-sans antialiased min-h-screen`}>
         {children}
+        <Toaster />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

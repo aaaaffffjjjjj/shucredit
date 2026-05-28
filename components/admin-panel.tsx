@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, X, FolderTree, BookOpen, ChevronRight, ChevronDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, FolderTree, BookOpen, ChevronRight, ChevronDown, Loader2, CheckCircle2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 
 interface AdminModule {
@@ -142,12 +143,14 @@ function ModuleFormModal({
   onSave,
   initial,
   modules,
+  saving,
 }: {
   open: boolean
   onClose: () => void
   onSave: (data: ModuleFormData) => void
   initial?: ModuleFormData & { id?: number }
   modules: AdminModule[]
+  saving?: boolean
 }) {
   const [name, setName] = useState(initial?.name || '')
   const [credits, setCredits] = useState(initial?.required_credits || 0)
@@ -227,13 +230,14 @@ function ModuleFormModal({
           </button>
           <button
             onClick={() => {
-              if (!name.trim()) return
+              if (!name.trim() || saving) return
               onSave({ name: name.trim(), required_credits: credits, parent_id: parentId })
-              onClose()
             }}
-            className="px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/20 text-white transition-colors"
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/20 text-white transition-colors disabled:opacity-50 flex items-center gap-2"
           >
-            保存
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {saving ? '保存中…' : '保存'}
           </button>
         </div>
       </div>
@@ -247,12 +251,14 @@ function CourseFormModal({
   onSave,
   initial,
   modules,
+  saving,
 }: {
   open: boolean
   onClose: () => void
   onSave: (data: CourseFormData) => void
   initial?: CourseFormData & { id?: number }
   modules: AdminModule[]
+  saving?: boolean
 }) {
   const [code, setCode] = useState(initial?.course_code || '')
   const [name, setName] = useState(initial?.name || '')
@@ -339,13 +345,14 @@ function CourseFormModal({
           </button>
           <button
             onClick={() => {
-              if (!code.trim() || !name.trim()) return
+              if (!code.trim() || !name.trim() || saving) return
               onSave({ course_code: code.trim(), name: name.trim(), credit, module_id: moduleId })
-              onClose()
             }}
-            className="px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/20 text-white transition-colors"
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm bg-white/10 hover:bg-white/20 text-white transition-colors disabled:opacity-50 flex items-center gap-2"
           >
-            保存
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {saving ? '保存中…' : '保存'}
           </button>
         </div>
       </div>
@@ -358,6 +365,8 @@ export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
   const [modules, setModules] = useState<AdminModule[]>([])
   const [courses, setCourses] = useState<AdminCourse[]>([])
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const [moduleFormOpen, setModuleFormOpen] = useState(false)
@@ -406,58 +415,81 @@ export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
   }, [open, loadModules, loadCourses])
 
   const handleSaveModule = async (data: ModuleFormData) => {
+    setSaving(true)
+    setError(null)
     try {
       if (editingModule?.id) {
         await apiFetch(`/api/admin/modules/${editingModule.id}`, {
           method: 'PUT',
           body: JSON.stringify(data),
         })
+        toast.success('模块更新成功')
       } else {
         await apiFetch('/api/admin/modules', {
           method: 'POST',
           body: JSON.stringify(data),
         })
+        toast.success('模块创建成功')
       }
       await loadModules()
+      setModuleFormOpen(false)
+      setEditingModule(undefined)
       onDataChanged?.()
     } catch (e) {
       setError('保存模块失败')
+      toast.error('保存模块失败')
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleDeleteModule = async (mod: AdminModule) => {
     if (!confirm(`确定删除模块「${mod.name}」吗？`)) return
+    setDeletingId(mod.id)
     try {
       const res = await apiFetch(`/api/admin/modules/${mod.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        alert(body.error || '删除失败')
+        toast.error(body.error || '删除失败')
         return
       }
+      toast.success(`模块「${mod.name}」已删除`)
       await loadModules()
       onDataChanged?.()
     } catch (e) {
       setError('删除模块失败')
+      toast.error('删除模块失败')
+    } finally {
+      setDeletingId(null)
     }
   }
 
   const handleSaveCourse = async (data: CourseFormData) => {
+    setSaving(true)
+    setError(null)
     try {
       if (editingCourse?.id) {
         await apiFetch(`/api/admin/courses/${editingCourse.id}`, {
           method: 'PUT',
           body: JSON.stringify(data),
         })
+        toast.success('课程更新成功')
       } else {
         await apiFetch('/api/admin/courses', {
           method: 'POST',
           body: JSON.stringify(data),
         })
+        toast.success('课程创建成功')
       }
       await loadCourses()
+      setCourseFormOpen(false)
+      setEditingCourse(undefined)
       onDataChanged?.()
     } catch (e) {
       setError('保存课程失败')
+      toast.error('保存课程失败')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -635,6 +667,7 @@ export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
         onSave={handleSaveModule}
         initial={editingModule}
         modules={modules}
+        saving={saving}
       />
 
       <CourseFormModal
@@ -643,6 +676,7 @@ export function AdminPanel({ open, onClose, onDataChanged }: AdminPanelProps) {
         onSave={handleSaveCourse}
         initial={editingCourse}
         modules={modules}
+        saving={saving}
       />
     </>
   )

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, ArrowRight, ChevronDown, GraduationCap } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight, ChevronDown, GraduationCap, BookOpen } from 'lucide-react'
 import Link from 'next/link'
 import { MathBackground } from '@/components/math-background'
 import { apiFetch } from '@/lib/api'
@@ -17,7 +17,11 @@ export default function LoginPage() {
   const [collegesOpen, setCollegesOpen] = useState(false)
   const [colleges, setColleges] = useState<Array<{ id: number; name: string; code: string }>>([])
   const [selectedCollegeId, setSelectedCollegeId] = useState<number | null>(null)
+  const [majors, setMajors] = useState<Array<{ id: number; name: string; college_id: number }>>([])
+  const [majorsOpen, setMajorsOpen] = useState(false)
+  const [selectedMajorId, setSelectedMajorId] = useState<number | null>(null)
   const collegesRef = useRef<HTMLDivElement>(null)
+  const majorsRef = useRef<HTMLDivElement>(null)
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -52,6 +56,9 @@ export default function LoginPage() {
       if (!selectedCollegeId) {
         newErrors.college = '请选择学院'
       }
+      if (!selectedMajorId) {
+        newErrors.major = '请选择专业'
+      }
     }
 
     setErrors(newErrors)
@@ -70,12 +77,33 @@ export default function LoginPage() {
       if (collegesRef.current && !collegesRef.current.contains(e.target as Node)) {
         setCollegesOpen(false)
       }
+      if (majorsRef.current && !majorsRef.current.contains(e.target as Node)) {
+        setMajorsOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  useEffect(() => {
+    if (!selectedCollegeId) {
+      setMajors([])
+      setSelectedMajorId(null)
+      return
+    }
+    let cancelled = false
+    apiFetch(`/api/majors?college_id=${selectedCollegeId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        setMajors(data.majors || [])
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [selectedCollegeId])
+
   const selectedCollege = colleges.find((c) => c.id === selectedCollegeId)
+  const selectedMajor = majors.find((m) => m.id === selectedMajorId)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -98,6 +126,7 @@ export default function LoginPage() {
               password: formData.password,
               name: formData.name.trim(),
               college_id: selectedCollegeId,
+              major_id: selectedMajorId,
             }
 
       const res = await apiFetch(endpoint, {
@@ -221,6 +250,51 @@ export default function LoginPage() {
                         }`}
                       >
                         {college.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {mode === 'register' && (
+              <div ref={majorsRef} className="relative">
+                <label className="block text-sm font-medium mb-2">所属专业</label>
+                <button
+                  type="button"
+                  onClick={() => selectedCollegeId && setMajorsOpen(!majorsOpen)}
+                  disabled={!selectedCollegeId}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 rounded-lg bg-background/80 backdrop-blur-sm border border-border text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <BookOpen className="w-4 h-4 text-muted-foreground" />
+                  <span className={selectedMajor ? 'text-foreground' : 'text-muted-foreground'}>
+                    {selectedCollegeId
+                      ? (selectedMajor ? selectedMajor.name : '请选择专业')
+                      : '请先选学院'}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-muted-foreground ml-auto transition-transform ${majorsOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {errors.major && (
+                  <p className="mt-1.5 text-sm text-destructive">{errors.major}</p>
+                )}
+                {majorsOpen && majors.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg bg-background/95 backdrop-blur-xl border border-border z-50">
+                    {majors.map((major) => (
+                      <button
+                        key={major.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedMajorId(major.id)
+                          setMajorsOpen(false)
+                          setErrors((prev) => ({ ...prev, major: '' }))
+                        }}
+                        className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                          major.id === selectedMajorId
+                            ? 'bg-foreground/10 text-foreground'
+                            : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
+                        }`}
+                      >
+                        {major.name}
                       </button>
                     ))}
                   </div>

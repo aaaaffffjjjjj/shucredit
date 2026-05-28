@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Menu, X } from 'lucide-react'
 import {
   getChildModules,
   modulePercent,
@@ -31,6 +31,7 @@ export default function SidebarModules({
   uploadSlot,
 }: SidebarModulesProps) {
   const [expandedRoots, setExpandedRoots] = useState<Record<string, boolean>>({})
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   const toggleRoot = (id: string) => {
     setExpandedRoots((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -45,14 +46,43 @@ export default function SidebarModules({
   }
 
   return (
-    <aside
-      className="glass-card fixed left-4 top-1/2 -translate-y-1/2 z-40 w-64 max-h-[min(80vh,640px)] flex flex-col p-4 text-white"
-      aria-label="学分模块"
-    >
-      <p className="text-xs uppercase tracking-wider text-white/50 mb-3 px-1">
-        学分模块
-      </p>
-      <div className="flex-1 overflow-y-auto scrollbar-none space-y-1">
+    <>
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        className="sm:hidden fixed left-2 top-1/2 -translate-y-1/2 z-40 p-2.5 rounded-xl glass-card text-white/70 hover:text-white transition-colors"
+        aria-label="打开模块列表"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
+      {mobileOpen && (
+        <div
+          className="sm:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`glass-card fixed left-4 top-1/2 -translate-y-1/2 z-40 w-72 max-h-[min(85vh,640px)] flex flex-col p-4 text-white transition-transform duration-300 ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-[calc(100%+2rem)] sm:translate-x-0'
+        }`}
+        aria-label="学分模块"
+      >
+        <div className="flex items-center justify-between mb-3 px-1">
+          <p className="text-xs uppercase tracking-wider text-white/50">
+            学分模块
+          </p>
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            className="sm:hidden p-1 rounded text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label="关闭"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto scrollbar-none space-y-1">
         {modules.map((mod) => {
           const children = getChildModules(allModules, mod.id)
           const expanded = expandedRoots[mod.id] ?? false
@@ -118,6 +148,7 @@ export default function SidebarModules({
         })}
       </div>
       {uploadSlot && <div className="mt-3 pt-3 border-t border-white/10">{uploadSlot}</div>}
-    </aside>
+      </aside>
+    </>
   )
 }
