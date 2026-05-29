@@ -72,7 +72,6 @@ export default function DashboardPage() {
 
   const planets = useMemo(() => toPlanetModules(modules), [modules])
 
-<<<<<<< HEAD
   const loadProgress = useCallback(async (collegeIdOverride?: number | null, majorIdOverride?: number | null) => {
     setProgressLoading(true)
     setProgressError(null)
@@ -87,22 +86,6 @@ export default function DashboardPage() {
       const url = params.toString()
         ? `/api/progress_data?${params.toString()}`
         : '/api/progress_data'
-=======
-  const loadProgress = useCallback(async (params?: { collegeId?: number | null; majorId?: number | null }) => {
-    setProgressLoading(true)
-    setProgressError(null)
-    try {
-      const cid = params?.collegeId !== undefined ? params.collegeId : collegeId
-      const mid = params?.majorId !== undefined ? params.majorId : majorId
-      const searchParams = new URLSearchParams()
-      if (mid) {
-        searchParams.set('major_id', String(mid))
-      } else if (cid) {
-        searchParams.set('college_id', String(cid))
-      }
-      const qs = searchParams.toString()
-      const url = qs ? `/api/progress_data?${qs}` : '/api/progress_data'
->>>>>>> 362a0993f8aed3fe82b446ba8efe589d3311317e
       const res = await apiFetch(url, { method: 'GET' })
       if (res.status === 401) {
         router.replace('/login')
@@ -124,33 +107,24 @@ export default function DashboardPage() {
   const handleCollegeChange = useCallback(
     (newCollegeId: number) => {
       setCollegeId(newCollegeId)
-<<<<<<< HEAD
       setMajorId(null) // 切换学院时重置专业
-=======
-      setMajorId(null)
->>>>>>> 362a0993f8aed3fe82b446ba8efe589d3311317e
       apiFetch('/api/user/college', {
         method: 'POST',
         body: JSON.stringify({ college_id: newCollegeId }),
       }).catch(() => {
         /* ignore persistence error */
       })
-<<<<<<< HEAD
       // 清除专业选择
       apiFetch('/api/user/major', {
         method: 'POST',
         body: JSON.stringify({ major_id: '' }),
       }).catch(() => {})
       loadProgress(newCollegeId, null)
-=======
-      loadProgress({ collegeId: newCollegeId, majorId: null })
->>>>>>> 362a0993f8aed3fe82b446ba8efe589d3311317e
     },
     [loadProgress],
   )
 
   const handleMajorChange = useCallback(
-<<<<<<< HEAD
     (newMajorId: number | null) => {
       setMajorId(newMajorId)
       apiFetch('/api/user/major', {
@@ -160,11 +134,6 @@ export default function DashboardPage() {
         /* ignore persistence error */
       })
       loadProgress(undefined, newMajorId)
-=======
-    (newMajorId: number) => {
-      setMajorId(newMajorId)
-      loadProgress({ majorId: newMajorId })
->>>>>>> 362a0993f8aed3fe82b446ba8efe589d3311317e
     },
     [loadProgress],
   )

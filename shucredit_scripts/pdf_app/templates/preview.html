@@ -367,6 +367,7 @@
                             <th>课程名称</th>
                             <th>学分</th>
                             <th>所属模块</th>
+                            <th>所有模块</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -377,6 +378,13 @@
                             <td><input type="text" name="course_name_{{ loop.index0 }}" value="{{ course.name }}" form="previewForm"></td>
                             <td><input type="number" step="0.5" name="course_credit_{{ loop.index0 }}" value="{{ course.credit }}" form="previewForm"></td>
                             <td><input type="number" name="course_module_{{ loop.index0 }}" value="{{ course.module_id }}" form="previewForm"></td>
+                            <td>
+                                {% if course.module_names %}
+                                    {{ course.module_names | join(', ') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>

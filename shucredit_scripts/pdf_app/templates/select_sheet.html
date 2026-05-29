@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>选择工作表 - 上海大学培养方案解析器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .sheet-list {
+            list-style: none;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .sheet-item {
+            padding: 15px 20px;
+            margin: 8px 0;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #fafafa;
+        }
+
+        .sheet-item:hover {
+            border-color: #667eea;
+            background: #f0f0ff;
+            transform: translateX(5px);
+        }
+
+        .sheet-item.selected {
+            border-color: #667eea;
+            background: #e8e8ff;
+        }
+
+        .btn-back {
+            background: #95a5a6;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: transform 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-back:hover {
+            transform: translateY(-2px);
+            background: #7f8c8d;
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .btn-submit:hover:not(:disabled) {
+            transform: translateY(-2px);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .error {
+            color: #e74c3c;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+
+        .button-group {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📋 选择工作表</h1>
+        <p class="subtitle">请选择要解析的Excel工作表</p>
+
+        <form method="POST">
+            <ul class="sheet-list">
+                {% for sheet_name in sheet_names %}
+                <li class="sheet-item" data-sheet="{{ sheet_name }}" onclick="selectSheet(this)">
+                    {{ sheet_name }}
+                </li>
+                {% endfor %}
+            </ul>
+
+            <input type="hidden" name="sheet_name" id="sheetName">
+
+            <div class="button-group">
+                <a href="{{ url_for('index') }}" class="btn-back">← 返回</a>
+                <button type="submit" class="btn-submit" id="submitBtn" disabled>
+                    🔄 开始解析
+                </button>
+            </div>
+        </form>
+
+        {% if error %}
+            <div class="error">❌ {{ error }}</div>
+        {% endif %}
+    </div>
+
+    <script>
+        let selectedSheet = '';
+
+        function selectSheet(element) {
+            document.querySelectorAll('.sheet-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            element.classList.add('selected');
+            selectedSheet = element.dataset.sheet;
+            document.getElementById('sheetName').value = selectedSheet;
+            document.getElementById('submitBtn').disabled = false;
+        }
+    </script>
+</body>
+</html>
